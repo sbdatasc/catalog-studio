@@ -8,6 +8,37 @@ export type BodyType<T> = T;
 
 export type AuthTokenGetter = () => Promise<string | null> | string | null;
 
+/**
+ * Shape of an API error envelope body as returned by the server.
+ * All error responses conform to: { data: null, error: { code, message, details? } }
+ */
+export interface ApiErrorEnvelope {
+  data: null;
+  error: {
+    code: string;
+    message: string;
+    details?: Record<string, unknown> | null;
+  };
+}
+
+/**
+ * Extract the typed error code from an ApiError whose data conforms to
+ * the standard error envelope. Returns undefined when the error body does
+ * not match the envelope shape (e.g. network errors, non-JSON responses).
+ *
+ * @example
+ * try { await healthCheck() }
+ * catch (err) {
+ *   if (err instanceof ApiError) {
+ *     const code = getErrorCode(err); // "NOT_FOUND" | "INTERNAL_ERROR" | ...
+ *   }
+ * }
+ */
+export function getErrorCode(err: ApiError<unknown>): string | undefined {
+  const data = err.data as ApiErrorEnvelope | null | undefined;
+  return data?.error?.code;
+}
+
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 

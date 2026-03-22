@@ -67,6 +67,12 @@ components:
       description: Optional metadata attached to responses (pagination, timing, etc.)
       additionalProperties: true
 
+    # ApiResponse pattern: all endpoint response schemas should follow this shape:
+    #   { data: <YourDataSchema> | null, error: AppError | null, meta?: ApiResponseMeta | null }
+    # Because OpenAPI 3.1 does not support true generics, define a concrete envelope schema
+    # per endpoint (e.g. NoteApiResponse, CatalogApiResponse) following the same structure.
+    # See HealthCheckApiResponse below as the canonical example.
+
     HealthStatus:
       type: object
       properties:
