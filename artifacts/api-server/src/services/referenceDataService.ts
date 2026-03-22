@@ -1,4 +1,4 @@
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, count } from "drizzle-orm";
 import {
   referenceDatasetsTable,
   referenceValuesTable,
@@ -15,6 +15,7 @@ export interface ReferenceDataset {
   id: string;
   name: string;
   description: string | null;
+  valueCount: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -61,12 +62,44 @@ export interface UpdateValueInput {
 }
 
 // ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+async function fetchValueCount(datasetId: string): Promise<number> {
+  const db = getDb();
+  const [row] = await db
+    .select({ c: count(referenceValuesTable.id) })
+    .from(referenceValuesTable)
+    .where(eq(referenceValuesTable.datasetId, datasetId));
+  return Number(row?.c ?? 0);
+}
+
+// ---------------------------------------------------------------------------
 // Dataset CRUD
 // ---------------------------------------------------------------------------
 
 export async function listDatasets(): Promise<ReferenceDataset[]> {
   const db = getDb();
-  return db.select().from(referenceDatasetsTable).orderBy(asc(referenceDatasetsTable.name));
+  const rows = await db
+    .select({
+      id: referenceDatasetsTable.id,
+      name: referenceDatasetsTable.name,
+      description: referenceDatasetsTable.description,
+      createdAt: referenceDatasetsTable.createdAt,
+      updatedAt: referenceDatasetsTable.updatedAt,
+      valueCount: count(referenceValuesTable.id),
+    })
+    .from(referenceDatasetsTable)
+    .leftJoin(referenceValuesTable, eq(referenceValuesTable.datasetId, referenceDatasetsTable.id))
+    .groupBy(
+      referenceDatasetsTable.id,
+      referenceDatasetsTable.name,
+      referenceDatasetsTable.description,
+      referenceDatasetsTable.createdAt,
+      referenceDatasetsTable.updatedAt,
+    )
+    .orderBy(asc(referenceDatasetsTable.name));
+  return rows;
 }
 
 export async function getDataset(id: string): Promise<ReferenceDatasetWithValues> {
@@ -87,7 +120,7 @@ export async function getDataset(id: string): Promise<ReferenceDatasetWithValues
     .where(eq(referenceValuesTable.datasetId, id))
     .orderBy(asc(referenceValuesTable.displayOrder));
 
-  return { ...row, values };
+  return { ...row, valueCount: values.length, values };
 }
 
 export async function createDataset(input: CreateDatasetInput): Promise<ReferenceDataset> {
@@ -108,7 +141,7 @@ export async function createDataset(input: CreateDatasetInput): Promise<Referenc
     .values({ name: input.name, description: input.description ?? null })
     .returning();
 
-  return row;
+  return { ...row, valueCount: 0 };
 }
 
 export async function updateDataset(
@@ -147,7 +180,8 @@ export async function updateDataset(
     .where(eq(referenceDatasetsTable.id, id))
     .returning();
 
-  return updated;
+  const valueCount = await fetchValueCount(id);
+  return { ...updated, valueCount };
 }
 
 export async function deleteDataset(id: string): Promise<void> {
@@ -162,8 +196,6 @@ export async function deleteDataset(id: string): Promise<void> {
     throw new ServiceError("NOT_FOUND", `Reference dataset "${id}" not found`);
   }
 
-  // Check if any attribute references this dataset
-  // Use raw SQL to check JSONB config for referenceDatasetId
   const { sql: rawSql } = await import("drizzle-orm");
   const [inUse] = await db
     .select({ id: schemaAttributesTable.id })
@@ -234,13 +266,29 @@ export async function createValue(
     throw new ServiceError("CONFLICT", `A value "${storedValue}" already exists in this dataset`);
   }
 
+  const [existing] = await db
+    .select({ displayOrder: referenceValuesTable.displayOrder })
+    .from(referenceValuesTable)
+    .where(eq(referenceValuesTable.datasetId, datasetId))
+    .orderBy(asc(referenceValuesTable.displayOrder));
+
+  const maxOrderRow = await db
+    .select({ maxOrder: referenceValuesTable.displayOrder })
+    .from(referenceValuesTable)
+    .where(eq(referenceValuesTable.datasetId, datasetId))
+    .orderBy(asc(referenceValuesTable.displayOrder));
+
+  const nextOrder =
+    input.displayOrder ?? (maxOrderRow.length > 0 ? maxOrderRow.length : 0);
+  void existing;
+
   const [row] = await db
     .insert(referenceValuesTable)
     .values({
       datasetId,
       label: input.label,
       value: storedValue,
-      displayOrder: input.displayOrder ?? 0,
+      displayOrder: nextOrder,
     })
     .returning();
 

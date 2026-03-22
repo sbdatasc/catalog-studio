@@ -1,6 +1,13 @@
+import { Link, useLocation } from "wouter";
 import { Database } from "lucide-react";
 
 export function DesignerNav() {
+  const [location] = useLocation();
+
+  const isTemplatesActive =
+    location === "/" || location.startsWith("/designer/templates");
+  const isReferenceDataActive = location.startsWith("/designer/reference-data");
+
   return (
     <div className="flex flex-col border-b border-border bg-card">
       <div className="h-16 px-6 flex items-center justify-between">
@@ -29,10 +36,36 @@ export function DesignerNav() {
       </div>
 
       <div className="px-6 flex items-center gap-6">
-        <div className="h-12 flex items-center border-b-2 border-primary text-sm font-medium text-foreground px-1">
+        <Link
+          href="/designer/templates"
+          className={[
+            "h-12 flex items-center border-b-2 text-sm font-medium px-1 transition-colors",
+            isTemplatesActive
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+          ].join(" ")}
+          data-testid="nav-tab-templates"
+        >
           Templates
-        </div>
-        <div className="h-12 flex items-center border-b-2 border-transparent text-sm font-medium text-muted-foreground px-1 opacity-50 cursor-not-allowed">
+        </Link>
+
+        <Link
+          href="/designer/reference-data"
+          className={[
+            "h-12 flex items-center border-b-2 text-sm font-medium px-1 transition-colors",
+            isReferenceDataActive
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+          ].join(" ")}
+          data-testid="nav-tab-reference-data"
+        >
+          Reference Data
+        </Link>
+
+        <div
+          className="h-12 flex items-center border-b-2 border-transparent text-sm font-medium text-muted-foreground px-1 opacity-50 cursor-not-allowed"
+          data-testid="nav-tab-publish"
+        >
           Publish
         </div>
       </div>

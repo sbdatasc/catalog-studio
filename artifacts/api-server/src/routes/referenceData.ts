@@ -33,14 +33,6 @@ router.get("/", async (_req, res): Promise<void> => {
   }
 });
 
-router.get("/:id", async (req, res): Promise<void> => {
-  try {
-    sendSuccess(res, await referenceDataService.getDataset(req.params.id));
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
 const CreateDatasetBody = z.object({
   name: z.string().min(1, "Name is required").max(100),
   description: z.string().max(500).nullish(),
@@ -58,6 +50,14 @@ router.post("/", async (req, res): Promise<void> => {
       description: parsed.data.description ?? null,
     });
     sendSuccess(res, dataset, { status: 201 });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.get("/:id", async (req, res): Promise<void> => {
+  try {
+    sendSuccess(res, await referenceDataService.getDataset(req.params.id));
   } catch (err) {
     handleError(res, err);
   }
@@ -91,12 +91,26 @@ router.delete("/:id", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// Value routes
+// Value routes — order matters: reorder must come before /:id/values/:valueId
 // ---------------------------------------------------------------------------
 
 router.get("/:id/values", async (req, res): Promise<void> => {
   try {
     sendSuccess(res, await referenceDataService.listValues(req.params.id));
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.post("/:id/values/reorder", async (req, res): Promise<void> => {
+  const body = z.object({ orderedIds: z.array(z.string().uuid()) }).safeParse(req.body);
+  if (!body.success) {
+    sendError(res, 422, "VALIDATION_ERROR", "orderedIds must be an array of UUIDs");
+    return;
+  }
+  try {
+    await referenceDataService.reorderValues(req.params.id, body.data.orderedIds);
+    sendSuccess(res, { reordered: true });
   } catch (err) {
     handleError(res, err);
   }
@@ -129,37 +143,23 @@ const UpdateValueBody = z.object({
   isActive: z.boolean().optional(),
 });
 
-router.patch("/values/:id", async (req, res): Promise<void> => {
+router.patch("/:datasetId/values/:valueId", async (req, res): Promise<void> => {
   const parsed = UpdateValueBody.safeParse(req.body);
   if (!parsed.success) {
     sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
     return;
   }
   try {
-    sendSuccess(res, await referenceDataService.updateValue(req.params.id, parsed.data));
+    sendSuccess(res, await referenceDataService.updateValue(req.params.valueId, parsed.data));
   } catch (err) {
     handleError(res, err);
   }
 });
 
-router.delete("/values/:id", async (req, res): Promise<void> => {
+router.delete("/:datasetId/values/:valueId", async (req, res): Promise<void> => {
   try {
-    await referenceDataService.deleteValue(req.params.id);
+    await referenceDataService.deleteValue(req.params.valueId);
     sendSuccess(res, { deleted: true });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
-
-router.put("/:id/values/reorder", async (req, res): Promise<void> => {
-  const body = z.object({ ids: z.array(z.string().uuid()) }).safeParse(req.body);
-  if (!body.success) {
-    sendError(res, 422, "VALIDATION_ERROR", "ids must be an array of UUIDs");
-    return;
-  }
-  try {
-    await referenceDataService.reorderValues(req.params.id, body.data.ids);
-    sendSuccess(res, { reordered: true });
   } catch (err) {
     handleError(res, err);
   }
