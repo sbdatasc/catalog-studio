@@ -1,4 +1,4 @@
-import { eq, asc, count, sql, and, max } from "drizzle-orm";
+import { eq, asc, count, sql, and, max, inArray, desc } from "drizzle-orm";
 import {
   catalogsTable,
   schemaTemplatesTable,
@@ -12,10 +12,12 @@ import {
   type AttributeType,
   type AttributeConfig,
   type SchemaSnapshot,
+  type SchemaDiff,
   type SnapshotTemplate,
   type SnapshotSection,
   type SnapshotAttribute,
 } from "@workspace/db";
+import { computeDiff } from "../utils/computeDiff";
 import { getDb } from "../db/connection";
 import { ServiceError } from "../lib/errors";
 import { toSlug } from "../lib/utils";
@@ -74,11 +76,35 @@ export interface Relationship {
 
 export interface SchemaVersion {
   id: string;
+  catalogId: string;
   versionNumber: number;
   snapshot: SchemaSnapshot;
+  diff: SchemaDiff | null;
+  entryCount: number;
   publishedBy: string | null;
   publishedAt: Date;
   isCurrent: boolean;
+}
+
+export type ChecklistCheckId =
+  | "has_templates"
+  | "no_empty_templates"
+  | "no_empty_sections"
+  | "no_broken_references"
+  | "no_broken_relationships"
+  | "reference_data_valid";
+
+export interface ChecklistCheck {
+  id: ChecklistCheckId;
+  passing: boolean;
+  message: string;
+  detail?: string;
+  navRoute?: string;
+}
+
+export interface ChecklistResult {
+  allPassing: boolean;
+  checks: ChecklistCheck[];
 }
 
 // ---------------------------------------------------------------------------
@@ -848,86 +874,307 @@ export async function deleteRelationship(id: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Schema versioning
+// Publish checklist
 // ---------------------------------------------------------------------------
+
+export async function getPublishChecklist(catalogId: string): Promise<ChecklistResult> {
+  const db = getDb();
+
+  const templates = await db
+    .select()
+    .from(schemaTemplatesTable)
+    .where(eq(schemaTemplatesTable.catalogId, catalogId))
+    .orderBy(asc(schemaTemplatesTable.name));
+
+  const standardTemplates = templates.filter((t) => !t.isReferenceData);
+  const refDataTemplates = templates.filter((t) => t.isReferenceData);
+  const allTemplateIds = templates.map((t) => t.id);
+
+  const sections =
+    allTemplateIds.length > 0
+      ? await db
+          .select()
+          .from(schemaSectionsTable)
+          .where(inArray(schemaSectionsTable.templateId, allTemplateIds))
+      : [];
+
+  const sectionIds = sections.map((s) => s.id);
+  const attributes =
+    sectionIds.length > 0
+      ? await db
+          .select()
+          .from(schemaAttributesTable)
+          .where(inArray(schemaAttributesTable.sectionId, sectionIds))
+      : [];
+
+  const relationships =
+    allTemplateIds.length > 0
+      ? await db
+          .select()
+          .from(schemaRelationshipsTable)
+          .where(
+            sql`${schemaRelationshipsTable.fromTemplateId} IN (${sql.join(allTemplateIds.map((id) => sql`${id}::uuid`), sql`, `)}) OR ${schemaRelationshipsTable.toTemplateId} IN (${sql.join(allTemplateIds.map((id) => sql`${id}::uuid`), sql`, `)})`,
+          )
+      : [];
+
+  const templateIdSet = new Set(allTemplateIds);
+  const sectionsByTemplate = new Map<string, typeof sections>();
+  const attrsBySection = new Map<string, typeof attributes>();
+
+  for (const s of sections) {
+    const existing = sectionsByTemplate.get(s.templateId) ?? [];
+    existing.push(s);
+    sectionsByTemplate.set(s.templateId, existing);
+  }
+  for (const a of attributes) {
+    const existing = attrsBySection.get(a.sectionId) ?? [];
+    existing.push(a);
+    attrsBySection.set(a.sectionId, existing);
+  }
+
+  const checks: ChecklistCheck[] = [];
+
+  // 1. has_templates
+  const hasTemplates = standardTemplates.length > 0;
+  checks.push({
+    id: "has_templates",
+    passing: hasTemplates,
+    message: hasTemplates
+      ? `${standardTemplates.length} template${standardTemplates.length === 1 ? "" : "s"} defined`
+      : "Add at least one template before publishing.",
+    navRoute: hasTemplates ? undefined : `/catalogs/${catalogId}/designer/templates`,
+  });
+
+  // 2. no_empty_templates
+  const emptyTemplate = standardTemplates.find((t) => (sectionsByTemplate.get(t.id) ?? []).length === 0);
+  const noEmptyTemplates = !emptyTemplate;
+  checks.push({
+    id: "no_empty_templates",
+    passing: noEmptyTemplates,
+    message: noEmptyTemplates
+      ? "All templates have at least one section"
+      : `${emptyTemplate!.name} has no sections. Add at least one section.`,
+    detail: emptyTemplate?.name,
+    navRoute: emptyTemplate
+      ? `/catalogs/${catalogId}/designer/templates/${emptyTemplate.id}`
+      : undefined,
+  });
+
+  // 3. no_empty_sections
+  let emptySection: { name: string; templateId: string; templateName: string } | undefined;
+  for (const s of sections) {
+    if ((attrsBySection.get(s.id) ?? []).length === 0) {
+      const tpl = templates.find((t) => t.id === s.templateId);
+      emptySection = { name: s.name, templateId: s.templateId, templateName: tpl?.name ?? "" };
+      break;
+    }
+  }
+  const noEmptySections = !emptySection;
+  checks.push({
+    id: "no_empty_sections",
+    passing: noEmptySections,
+    message: noEmptySections
+      ? "All sections have at least one attribute"
+      : `"${emptySection!.name}" in "${emptySection!.templateName}" has no attributes.`,
+    detail: emptySection ? `${emptySection.name} in ${emptySection.templateName}` : undefined,
+    navRoute: emptySection
+      ? `/catalogs/${catalogId}/designer/templates/${emptySection.templateId}`
+      : undefined,
+  });
+
+  // 4. no_broken_references
+  let brokenRefAttr: { name: string; templateId: string } | undefined;
+  for (const a of attributes) {
+    if (a.attributeType === "reference" || a.attributeType === "reference_data") {
+      const cfg = a.config as { targetTemplateId?: string } | null;
+      if (cfg?.targetTemplateId && !templateIdSet.has(cfg.targetTemplateId)) {
+        const sec = sections.find((s) => s.id === a.sectionId);
+        brokenRefAttr = { name: a.name, templateId: sec?.templateId ?? "" };
+        break;
+      }
+    }
+  }
+  const noBrokenReferences = !brokenRefAttr;
+  checks.push({
+    id: "no_broken_references",
+    passing: noBrokenReferences,
+    message: noBrokenReferences
+      ? "No broken attribute references"
+      : `"${brokenRefAttr!.name}" references a deleted template. Fix or remove it.`,
+    detail: brokenRefAttr?.name,
+    navRoute: brokenRefAttr
+      ? `/catalogs/${catalogId}/designer/templates/${brokenRefAttr.templateId}`
+      : undefined,
+  });
+
+  // 5. no_broken_relationships
+  const brokenRel = relationships.find(
+    (r) => !templateIdSet.has(r.fromTemplateId) || !templateIdSet.has(r.toTemplateId),
+  );
+  const noBrokenRelationships = !brokenRel;
+  checks.push({
+    id: "no_broken_relationships",
+    passing: noBrokenRelationships,
+    message: noBrokenRelationships
+      ? "No broken relationship references"
+      : `Relationship "${brokenRel!.label}" references a deleted template. Fix or remove it.`,
+    detail: brokenRel?.label,
+    navRoute: noBrokenRelationships
+      ? undefined
+      : `/catalogs/${catalogId}/designer/relationships`,
+  });
+
+  // 6. reference_data_valid
+  let invalidRefData: { name: string; id: string } | undefined;
+  for (const t of refDataTemplates) {
+    const tSections = sectionsByTemplate.get(t.id) ?? [];
+    if (tSections.length === 0) {
+      invalidRefData = { name: t.name, id: t.id };
+      break;
+    }
+    const hasAttr = tSections.some((s) => (attrsBySection.get(s.id) ?? []).length > 0);
+    if (!hasAttr) {
+      invalidRefData = { name: t.name, id: t.id };
+      break;
+    }
+  }
+  const refDataValid = !invalidRefData;
+  checks.push({
+    id: "reference_data_valid",
+    passing: refDataValid,
+    message: refDataValid
+      ? "All reference data templates are valid"
+      : `Reference data template "${invalidRefData!.name}" has no attributes defined.`,
+    detail: invalidRefData?.name,
+    navRoute: invalidRefData
+      ? `/catalogs/${catalogId}/designer/reference-data/${invalidRefData.id}`
+      : undefined,
+  });
+
+  return {
+    allPassing: checks.every((c) => c.passing),
+    checks,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Schema versioning — publish
+// ---------------------------------------------------------------------------
+
+function toSchemaVersion(row: {
+  id: string;
+  catalogId: string | null;
+  versionNumber: number;
+  snapshot: unknown;
+  diff?: unknown;
+  entryCount: number;
+  publishedBy: string | null;
+  publishedAt: Date;
+  isCurrent: boolean;
+}): SchemaVersion {
+  return {
+    id: row.id,
+    catalogId: row.catalogId ?? "",
+    versionNumber: row.versionNumber,
+    snapshot: row.snapshot as SchemaSnapshot,
+    diff: (row.diff as SchemaDiff | null) ?? null,
+    entryCount: row.entryCount,
+    publishedBy: row.publishedBy,
+    publishedAt: row.publishedAt,
+    isCurrent: row.isCurrent,
+  };
+}
 
 export async function publishSchema(catalogId: string): Promise<SchemaVersion> {
   const db = getDb();
-  await assertCatalogNotLocked(catalogId);
+
+  // Step 0: verify catalog exists and is not locked
+  const [catalog] = await db
+    .select()
+    .from(catalogsTable)
+    .where(eq(catalogsTable.id, catalogId))
+    .limit(1);
+
+  if (!catalog) throw new ServiceError("NOT_FOUND", `Catalog "${catalogId}" not found`);
+  if (catalog.status !== "draft") {
+    throw new ServiceError("CATALOG_LOCKED", "Schema publishing is only available for Draft catalogs.");
+  }
+
+  // Step 2: run checklist
+  const checklist = await getPublishChecklist(catalogId);
+  if (!checklist.allPassing) {
+    const failing = checklist.checks.find((c) => !c.passing);
+    throw new ServiceError("SCHEMA_INVALID", failing?.message ?? "Schema has errors. Fix all checklist items before publishing.");
+  }
 
   return await db.transaction(async (tx) => {
-    const [latestVersion] = await tx
-      .select({ versionNumber: schemaVersionsTable.versionNumber })
-      .from(schemaVersionsTable)
-      .orderBy(sql`${schemaVersionsTable.versionNumber} DESC`)
-      .limit(1);
-
-    const nextVersion = (latestVersion?.versionNumber ?? 0) + 1;
-
-    // Fetch catalog
-    const [catalog] = await tx
-      .select({ name: catalogsTable.name })
-      .from(catalogsTable)
-      .where(eq(catalogsTable.id, catalogId))
-      .limit(1);
-
-    if (!catalog) throw new ServiceError("NOT_FOUND", `Catalog "${catalogId}" not found`);
-
+    // Step 1: load all schema data inside the transaction
     const templates = await tx
       .select()
       .from(schemaTemplatesTable)
       .where(eq(schemaTemplatesTable.catalogId, catalogId))
       .orderBy(asc(schemaTemplatesTable.name));
 
-    const sections = await tx
-      .select()
-      .from(schemaSectionsTable)
-      .orderBy(asc(schemaSectionsTable.displayOrder));
+    const templateIds = templates.map((t) => t.id);
 
-    const attributes = await tx
-      .select()
-      .from(schemaAttributesTable)
-      .orderBy(asc(schemaAttributesTable.displayOrder));
+    const sections =
+      templateIds.length > 0
+        ? await tx
+            .select()
+            .from(schemaSectionsTable)
+            .where(inArray(schemaSectionsTable.templateId, templateIds))
+            .orderBy(asc(schemaSectionsTable.displayOrder))
+        : [];
 
-    const relationships = await tx.select().from(schemaRelationshipsTable);
+    const sectionIds = sections.map((s) => s.id);
+    const attributes =
+      sectionIds.length > 0
+        ? await tx
+            .select()
+            .from(schemaAttributesTable)
+            .where(inArray(schemaAttributesTable.sectionId, sectionIds))
+            .orderBy(asc(schemaAttributesTable.displayOrder))
+        : [];
 
+    const relationships =
+      templateIds.length > 0
+        ? await tx
+            .select()
+            .from(schemaRelationshipsTable)
+            .where(
+              sql`${schemaRelationshipsTable.fromTemplateId} IN (${sql.join(templateIds.map((id) => sql`${id}::uuid`), sql`, `)}) OR ${schemaRelationshipsTable.toTemplateId} IN (${sql.join(templateIds.map((id) => sql`${id}::uuid`), sql`, `)})`,
+            )
+        : [];
+
+    // Step 3: Build SchemaSnapshot
     const sectionMap = new Map<string, SnapshotSection>();
     for (const s of sections) {
-      sectionMap.set(s.id, {
-        id: s.id,
-        name: s.name,
-        description: s.description,
-        displayOrder: s.displayOrder,
-        attributes: [],
-      });
+      sectionMap.set(s.id, { id: s.id, name: s.name, description: s.description, displayOrder: s.displayOrder, attributes: [] });
     }
-
     for (const a of attributes) {
-      const sec = sectionMap.get(a.sectionId);
-      if (sec) {
-        sec.attributes.push({
-          id: a.id,
-          name: a.name,
-          slug: a.slug,
-          description: a.description,
-          attributeType: a.attributeType as AttributeType,
-          required: a.required,
-          displayOrder: a.displayOrder,
-          config: a.config as AttributeConfig,
-        } satisfies SnapshotAttribute);
-      }
+      sectionMap.get(a.sectionId)?.attributes.push({
+        id: a.id,
+        name: a.name,
+        slug: a.slug,
+        description: a.description,
+        attributeType: a.attributeType as AttributeType,
+        required: a.required,
+        displayOrder: a.displayOrder,
+        config: a.config as AttributeConfig,
+      } satisfies SnapshotAttribute);
     }
 
-    const templateIds = new Set(templates.map((t) => t.id));
-
-    const snapshotTemplates: SnapshotTemplate[] = templates.map((t) => {
-      const templateSections = sections
-        .filter((s) => s.templateId === t.id)
-        .map((s) => sectionMap.get(s.id)!)
-        .filter(Boolean);
-
-      const templateRelationships = relationships
-        .filter((r) => templateIds.has(r.fromTemplateId) || templateIds.has(r.toTemplateId))
+    const templateIdSet = new Set(templateIds);
+    const snapshotTemplates: SnapshotTemplate[] = templates.map((t) => ({
+      id: t.id,
+      name: t.name,
+      slug: t.slug,
+      description: t.description,
+      isSystemSeed: t.isSystemSeed,
+      isReferenceData: t.isReferenceData,
+      sections: sections.filter((s) => s.templateId === t.id).map((s) => sectionMap.get(s.id)!).filter(Boolean),
+      relationships: relationships
+        .filter((r) => templateIdSet.has(r.fromTemplateId) && templateIdSet.has(r.toTemplateId))
         .filter((r) => r.fromTemplateId === t.id || r.toTemplateId === t.id)
         .map((r) => ({
           id: r.id,
@@ -936,69 +1183,144 @@ export async function publishSchema(catalogId: string): Promise<SchemaVersion> {
           label: r.label,
           cardinality: r.cardinality as "1:1" | "1:N" | "M:N",
           direction: r.direction as "from" | "to" | "both",
-        }));
+        })),
+    }));
 
-      return {
-        id: t.id,
-        name: t.name,
-        slug: t.slug,
-        description: t.description,
-        isSystemSeed: t.isSystemSeed,
-        isReferenceData: t.isReferenceData,
-        sections: templateSections,
-        relationships: templateRelationships,
-      };
-    });
+    // Step 5: increment version
+    const [latestVersion] = await tx
+      .select({ versionNumber: schemaVersionsTable.versionNumber })
+      .from(schemaVersionsTable)
+      .where(eq(schemaVersionsTable.catalogId, catalogId))
+      .orderBy(desc(schemaVersionsTable.versionNumber))
+      .limit(1);
+
+    const nextVersionNumber = (latestVersion?.versionNumber ?? 0) + 1;
 
     const snapshot: SchemaSnapshot = {
-      version: nextVersion,
+      version: nextVersionNumber,
       publishedAt: new Date().toISOString(),
       catalogId,
       catalogName: catalog.name,
       templates: snapshotTemplates,
     };
 
+    // Step 4: compute diff against previous snapshot
+    const [prevVersion] = await tx
+      .select({ snapshot: schemaVersionsTable.snapshot })
+      .from(schemaVersionsTable)
+      .where(and(eq(schemaVersionsTable.catalogId, catalogId), eq(schemaVersionsTable.isCurrent, true)))
+      .limit(1);
+
+    const prevSnapshot = prevVersion ? (prevVersion.snapshot as SchemaSnapshot) : null;
+    const diff = computeDiff(prevSnapshot, snapshot);
+
+    // Count existing entries for this catalog
+    const [entryCountRow] = await tx
+      .select({ count: count(catalogEntriesTable.id) })
+      .from(catalogEntriesTable)
+      .where(eq(catalogEntriesTable.catalogId, catalogId));
+    const entryCount = Number(entryCountRow?.count ?? 0);
+
+    // Step 7: mark previous version as not current
     await tx
       .update(schemaVersionsTable)
       .set({ isCurrent: false })
-      .where(eq(schemaVersionsTable.isCurrent, true));
+      .where(and(eq(schemaVersionsTable.catalogId, catalogId), eq(schemaVersionsTable.isCurrent, true)));
 
-    const [version] = await tx
+    // Step 6: insert new version
+    const [newVersion] = await tx
       .insert(schemaVersionsTable)
       .values({
-        versionNumber: nextVersion,
+        catalogId,
+        versionNumber: nextVersionNumber,
         snapshot: snapshot as unknown as Record<string, unknown>,
+        diff: diff as unknown as Record<string, unknown>,
+        entryCount,
         isCurrent: true,
       })
       .returning();
 
-    return {
-      id: version.id,
-      versionNumber: version.versionNumber,
-      snapshot,
-      publishedBy: version.publishedBy,
-      publishedAt: version.publishedAt,
-      isCurrent: version.isCurrent,
-    };
+    // Step 8: entry migration
+    // Find added attributes (in new snapshot, not in old)
+    const oldAttrIds = new Set(
+      (prevSnapshot?.templates ?? []).flatMap((t) => t.sections.flatMap((s) => s.attributes.map((a) => a.id))),
+    );
+    const newAttrIds = new Set(snapshotTemplates.flatMap((t) => t.sections.flatMap((s) => s.attributes.map((a) => a.id))));
+
+    const addedAttrIds = [...newAttrIds].filter((id) => !oldAttrIds.has(id));
+    const removedAttrIds = [...oldAttrIds].filter((id) => !newAttrIds.has(id));
+
+    // For added attrs: build a map of attribute -> templateId
+    if (addedAttrIds.length > 0) {
+      for (const attrId of addedAttrIds) {
+        // Find the template this attribute belongs to
+        let templateId: string | undefined;
+        for (const tpl of snapshotTemplates) {
+          const found = tpl.sections.some((s) => s.attributes.some((a) => a.id === attrId));
+          if (found) { templateId = tpl.id; break; }
+        }
+        if (!templateId) continue;
+
+        // Get all existing entries for this template
+        const existingEntries = await tx
+          .select({ id: catalogEntriesTable.id })
+          .from(catalogEntriesTable)
+          .where(eq(catalogEntriesTable.templateId, templateId));
+
+        if (existingEntries.length > 0) {
+          await tx.insert(catalogFieldValuesTable).values(
+            existingEntries.map((e) => ({
+              entryId: e.id,
+              attributeId: attrId,
+              valueText: null,
+            })),
+          );
+        }
+      }
+    }
+
+    // For removed attrs: delete all field values for those attribute_ids
+    if (removedAttrIds.length > 0) {
+      await tx
+        .delete(catalogFieldValuesTable)
+        .where(inArray(catalogFieldValuesTable.attributeId, removedAttrIds));
+    }
+
+    return toSchemaVersion(newVersion);
   });
 }
 
-export async function getCurrentPublishedSchema(): Promise<SchemaVersion | null> {
+export async function getCurrentPublishedSchema(catalogId: string): Promise<SchemaVersion | null> {
   const db = getDb();
   const [version] = await db
     .select()
     .from(schemaVersionsTable)
-    .where(eq(schemaVersionsTable.isCurrent, true))
+    .where(and(eq(schemaVersionsTable.catalogId, catalogId), eq(schemaVersionsTable.isCurrent, true)))
     .limit(1);
 
   if (!version) return null;
+  return toSchemaVersion(version);
+}
 
-  return {
-    id: version.id,
-    versionNumber: version.versionNumber,
-    snapshot: version.snapshot as unknown as SchemaSnapshot,
-    publishedBy: version.publishedBy,
-    publishedAt: version.publishedAt,
-    isCurrent: version.isCurrent,
-  };
+export async function getVersionHistory(catalogId: string): Promise<SchemaVersion[]> {
+  const db = getDb();
+  const versions = await db
+    .select()
+    .from(schemaVersionsTable)
+    .where(eq(schemaVersionsTable.catalogId, catalogId))
+    .orderBy(desc(schemaVersionsTable.versionNumber));
+
+  return versions.map(toSchemaVersion);
+}
+
+export async function getVersionDiff(versionId: string): Promise<SchemaDiff | null> {
+  const db = getDb();
+  const [version] = await db
+    .select({ diff: schemaVersionsTable.diff })
+    .from(schemaVersionsTable)
+    .where(eq(schemaVersionsTable.id, versionId))
+    .limit(1);
+
+  if (!version) throw new ServiceError("NOT_FOUND", `Schema version "${versionId}" not found`);
+  return (version.diff as SchemaDiff | null) ?? null;
 }

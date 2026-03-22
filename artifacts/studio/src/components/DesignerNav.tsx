@@ -3,7 +3,7 @@ import { Database, ChevronLeft } from "lucide-react";
 
 interface Props {
   catalogId: string;
-  tab: "templates" | "reference-data" | "relationships";
+  tab: "templates" | "reference-data" | "relationships" | "publish";
 }
 
 export function DesignerNav({ catalogId, tab }: Props) {
@@ -85,12 +85,18 @@ export function DesignerNav({ catalogId, tab }: Props) {
           Relationships
         </Link>
 
-        <div
-          className="h-12 flex items-center border-b-2 border-transparent text-sm font-medium text-muted-foreground px-1 opacity-50 cursor-not-allowed"
+        <Link
+          href={`${base}/publish`}
+          className={[
+            "h-12 flex items-center border-b-2 text-sm font-medium px-1 transition-colors",
+            tab === "publish"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+          ].join(" ")}
           data-testid="nav-tab-publish"
         >
           Publish
-        </div>
+        </Link>
       </div>
     </div>
   );

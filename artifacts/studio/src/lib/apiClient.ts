@@ -83,6 +83,47 @@ export interface NodePosition {
   y: number;
 }
 
+export interface ChecklistCheck {
+  id: string;
+  passing: boolean;
+  message: string;
+  detail?: string;
+  navRoute?: string;
+}
+
+export interface ChecklistResult {
+  allPassing: boolean;
+  checks: ChecklistCheck[];
+}
+
+export interface SchemaDiff {
+  templatesAdded: string[];
+  templatesRemoved: string[];
+  byTemplate: Record<
+    string,
+    {
+      sectionsAdded: string[];
+      sectionsRemoved: string[];
+      attributesAdded: Array<{ name: string; type: string }>;
+      attributesRemoved: Array<{ name: string; type: string }>;
+      attributesModified: Array<{ name: string; field: string; from: string; to: string }>;
+    }
+  >;
+  relationshipsAdded: Array<{ from: string; label: string; to: string; cardinality: string }>;
+  relationshipsRemoved: Array<{ from: string; label: string; to: string }>;
+}
+
+export interface SchemaVersion {
+  id: string;
+  catalogId: string;
+  versionNumber: number;
+  entryCount: number;
+  publishedBy: string | null;
+  publishedAt: string;
+  isCurrent: boolean;
+  diff: SchemaDiff | null;
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -256,6 +297,29 @@ export const apiClient = {
       fetchApi<{ ok: true }>(`/schema/relationships/positions?catalogId=${encodeURIComponent(catalogId)}`, {
         method: "POST",
         body: JSON.stringify({ positions }),
+      }),
+
+    // Publish (D-04)
+    getPublishChecklist: (catalogId: string) =>
+      fetchApi<ChecklistResult>(`/schema/publish/checklist?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "GET",
+      }),
+    getCurrentVersion: (catalogId: string) =>
+      fetchApi<SchemaVersion | null>(`/schema/publish/current?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "GET",
+      }),
+    getVersionHistory: (catalogId: string) =>
+      fetchApi<SchemaVersion[]>(`/schema/publish/history?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "GET",
+      }),
+    getVersionDiff: (versionId: string) =>
+      fetchApi<SchemaDiff | null>(`/schema/publish/diff/${encodeURIComponent(versionId)}`, {
+        method: "GET",
+      }),
+    publish: (catalogId: string) =>
+      fetchApi<SchemaVersion>("/schema/publish", {
+        method: "POST",
+        body: JSON.stringify({ catalogId }),
       }),
   },
 };

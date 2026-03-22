@@ -7,6 +7,7 @@ import { CatalogsPage } from "@/pages/CatalogsPage";
 import { DesignerPage } from "@/pages/DesignerPage";
 import { TemplateDetailPage } from "@/components/designer/templates/TemplateDetailPage";
 import { RelationshipsPage } from "@/pages/RelationshipsPage";
+import { PublishPage } from "@/pages/PublishPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -60,6 +61,12 @@ function Router() {
         component={({ params }) => (
           <RelationshipsPage catalogId={params.catalogId} />
         )}
+      />
+
+      {/* Publish page (D-04) */}
+      <Route
+        path="/catalogs/:catalogId/designer/publish"
+        component={({ params }) => <PublishPage catalogId={params.catalogId} />}
       />
 
       {/* Designer grid pages */}

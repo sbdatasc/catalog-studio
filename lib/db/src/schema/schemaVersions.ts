@@ -8,14 +8,17 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type { SchemaSnapshot } from "../types";
+import type { SchemaSnapshot, SchemaDiff } from "../types";
 
 export const schemaVersionsTable = pgTable("schema_versions", {
   id: uuid("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  catalogId: uuid("catalog_id").notNull(),
   versionNumber: integer("version_number").notNull(),
   snapshot: jsonb("snapshot").notNull().$type<SchemaSnapshot>(),
+  diff: jsonb("diff").$type<SchemaDiff | null>(),
+  entryCount: integer("entry_count").notNull().default(0),
   publishedBy: varchar("published_by", { length: 100 }),
   publishedAt: timestamp("published_at", { withTimezone: true })
     .notNull()

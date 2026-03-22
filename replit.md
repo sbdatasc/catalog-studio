@@ -151,7 +151,7 @@ Schema definitions and shared types. **Does NOT create a DB connection.**
   - `catalogEntries.ts` — EAV catalog entries (`catalog_id` FK, `template_id` FK)
   - `catalogFieldValues.ts` — EAV attribute values stored as TEXT
   - `catalogEntryRelationships.ts` — entry-to-entry links
-- `src/types.ts` — `AttributeType` enum, `AttributeConfigSchema` (Zod), `SchemaSnapshot` (includes `catalogId`, `catalogName`, `isReferenceData` per template), `SnapshotTemplate`, `SnapshotSection`, `SnapshotAttribute`
+- `src/types.ts` — `AttributeType` enum, `AttributeConfigSchema` (Zod), `SchemaSnapshot`, `SchemaDiff` (diff between two snapshots), `SnapshotTemplate`, `SnapshotSection`, `SnapshotAttribute`
 - `drizzle.config.ts` — requires `DATABASE_URL` (auto-provided by Replit)
 - `pnpm --filter @workspace/db run push-force` — syncs schema to DB (for development)
 - `pnpm --filter @workspace/db run build` — compiles declaration files
@@ -165,7 +165,42 @@ All API responses use a typed envelope:
 
 Use `sendSuccess` and `sendError` from `artifacts/api-server/src/lib/response.ts`. Services throw `new ServiceError(code, message)`.
 
-**Error codes**: `NOT_FOUND`, `CONFLICT`, `VALIDATION_ERROR`, `TEMPLATE_IN_USE`, `SECTION_IN_USE`, `CATALOG_LOCKED`, `CATALOG_INVALID_TRANSITION`, `BAD_REQUEST`, `INTERNAL_ERROR`
+**Error codes**: `NOT_FOUND`, `CONFLICT`, `VALIDATION_ERROR`, `TEMPLATE_IN_USE`, `SECTION_IN_USE`, `CATALOG_LOCKED`, `CATALOG_INVALID_TRANSITION`, `SCHEMA_INVALID`, `BAD_REQUEST`, `INTERNAL_ERROR`
+
+## Publish / Version Control (D-04)
+
+### Backend
+
+- `artifacts/api-server/src/utils/computeDiff.ts` — pure function, computes `SchemaDiff` between two `SchemaSnapshot`s. No DB access. Called at publish time only.
+- `artifacts/api-server/src/services/templateService.ts` — `getPublishChecklist(catalogId)`, `publishSchema(catalogId)`, `getCurrentPublishedSchema(catalogId)`, `getVersionHistory(catalogId)`, `getVersionDiff(versionId)`
+- `artifacts/api-server/src/routes/schema/publish.ts` — mounted at `/api/schema/publish`
+- `schema_versions` table: `catalog_id`, `version_number`, `snapshot` (JSONB), `diff` (JSONB), `entry_count`, `is_current`, `published_by`, `published_at`
+
+### Publish Flow (10-step transaction)
+1. Load catalog (verify exists, status=draft)
+2. Run pre-publish checklist (6 checks) — fails fast
+3. Load all templates/sections/attributes/relationships inside transaction
+4. Build SchemaSnapshot JSON
+5. Compute SchemaDiff (vs. previous current version)
+6. Increment version number scoped to catalogId
+7. Mark previous isCurrent=false
+8. INSERT new schema_versions row
+9. Entry migration: INSERT NULL field_value rows for added attributes; DELETE rows for removed attributes
+10. COMMIT
+
+### Checklist Checks
+1. `has_templates` — at least one non-reference-data template
+2. `no_empty_templates` — all templates have at least one section
+3. `no_empty_sections` — all sections have at least one attribute
+4. `no_broken_references` — all reference attribute configs point to existing templates
+5. `no_broken_relationships` — all relationships reference existing templates
+6. `reference_data_valid` — all reference data templates have at least one section with attributes
+
+### Frontend
+
+- `artifacts/studio/src/stores/publishStore.ts` — Zustand store for checklist, versions, diff, publish action; call `reset()` when switching catalogs
+- `artifacts/studio/src/pages/PublishPage.tsx` — full page at `/catalogs/:id/designer/publish`; contains: pre-publish checklist with Fix links, Publish button, confirm modal, version history list, diff panel
+- `artifacts/studio/src/components/DesignerNav.tsx` — Publish tab is now a real Link (was disabled)
 
 ## Database Architecture (v2 — Catalog Layer)
 

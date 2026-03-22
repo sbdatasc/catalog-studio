@@ -2,6 +2,7 @@ import type pg from "pg";
 import { logger } from "../lib/logger";
 import { up as migration001 } from "./migrations/001_initial";
 import { up as migration002 } from "./migrations/002_add_node_positions";
+import { up as migration003 } from "./migrations/003_add_schema_version_diff";
 
 interface MigrationFile {
   version: number;
@@ -11,6 +12,7 @@ interface MigrationFile {
 const MIGRATIONS: MigrationFile[] = [
   { version: 1, up: migration001 },
   { version: 2, up: migration002 },
+  { version: 3, up: migration003 },
 ];
 
 /**

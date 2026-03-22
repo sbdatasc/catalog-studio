@@ -109,3 +109,24 @@ export interface SchemaSnapshot {
   catalogName: string;
   templates: SnapshotTemplate[];
 }
+
+// ---------------------------------------------------------------------------
+// SchemaDiff — computed at publish time, stored in schema_versions.diff
+// ---------------------------------------------------------------------------
+
+export interface SchemaDiff {
+  templatesAdded: string[];
+  templatesRemoved: string[];
+  byTemplate: Record<
+    string,
+    {
+      sectionsAdded: string[];
+      sectionsRemoved: string[];
+      attributesAdded: Array<{ name: string; type: string }>;
+      attributesRemoved: Array<{ name: string; type: string }>;
+      attributesModified: Array<{ name: string; field: string; from: string; to: string }>;
+    }
+  >;
+  relationshipsAdded: Array<{ from: string; label: string; to: string; cardinality: string }>;
+  relationshipsRemoved: Array<{ from: string; label: string; to: string }>;
+}
