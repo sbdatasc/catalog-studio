@@ -8,6 +8,9 @@ import { SectionDrawer } from "./SectionDrawer";
 import { DeleteSectionModal } from "./DeleteSectionModal";
 import { DeleteAttributeModal } from "./DeleteAttributeModal";
 import { DesignerNav } from "@/components/DesignerNav";
+import { TemplateRelationshipsTab } from "@/components/designer/relationships/TemplateRelationshipsTab";
+import { RelationshipDrawer } from "@/components/designer/relationships/RelationshipDrawer";
+import { DeleteRelationshipModal } from "@/components/designer/relationships/DeleteRelationshipModal";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
 import { apiClient, type CatalogTemplate, type Section, type AttributeDefinition } from "@/lib/apiClient";
@@ -18,6 +21,8 @@ interface Props {
   /** "templates" or "reference-data" — determines breadcrumb + nav tab */
   tabContext: "templates" | "reference-data";
 }
+
+type PageTab = "sections" | "relationships";
 
 export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props) {
   const {
@@ -40,6 +45,7 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
 
   const [template, setTemplate] = useState<CatalogTemplate | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<PageTab>("sections");
 
   // Section/attribute delete modal state (local — not in uiStore)
   const [deleteSectionTarget, setDeleteSectionTarget] = useState<Section | null>(null);
@@ -54,13 +60,11 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
     let cancelled = false;
 
     async function load() {
-      // Load catalog status
       const { data: catalogData } = await apiClient.catalogs.get(catalogId);
       if (catalogData && !cancelled) {
         setActiveCatalog(catalogData.id, catalogData.status);
       }
 
-      // Load template
       const { data: tplData, error: tplError } = await apiClient.schema.getTemplate(templateId);
       if (cancelled) return;
       if (tplError || !tplData) {
@@ -69,10 +73,8 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
       }
       setTemplate(tplData);
 
-      // Load sections
       await fetchSections(templateId);
 
-      // Load templates for reference attribute type selection
       if (catalogData) {
         fetchTemplates(catalogId);
         fetchReferenceDataTemplates(catalogId);
@@ -92,7 +94,6 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
   const breadcrumbTabLabel = tabContext === "templates" ? "Templates" : "Reference Data";
   const breadcrumbTabHref = `/catalogs/${catalogId}/designer/${tabContext}`;
 
-  // All standard templates (for reference type dropdown) — exclude this template
   const availableRefTargets = templates.filter((t) => t.id !== templateId);
   const availableRefDataTargets = referenceDataTemplates;
 
@@ -190,7 +191,8 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
                 )}
               </div>
 
-              {!isCatalogLocked && (
+              {/* Tab-aware action button */}
+              {!isCatalogLocked && activeTab === "sections" && (
                 <Button
                   onClick={() => openCreateSectionDrawer(templateId)}
                   className="shrink-0"
@@ -203,58 +205,88 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
             </div>
           )}
 
-          {/* Sections */}
-          {sectionsAreLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-16 bg-muted/40 rounded-lg animate-pulse" />
-              ))}
-            </div>
-          ) : sections.length === 0 && !loadError ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-xl">
-              <p className="text-muted-foreground text-sm mb-4">
-                No sections yet. Create your first section to start defining attributes.
-              </p>
-              {!isCatalogLocked && (
-                <Button
-                  variant="outline"
-                  onClick={() => openCreateSectionDrawer(templateId)}
-                  data-testid="button-add-section-empty"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Section
-                </Button>
-              )}
-            </div>
-          ) : (
-            <>
-              <SectionList
-                sections={sections}
-                templateId={templateId}
-                isReferenceDataTemplate={template?.isReferenceData ?? false}
-                isCatalogLocked={isCatalogLocked}
-                onEditSection={(s) => openEditSectionDrawer(templateId, s.id)}
-                onDeleteSection={(s) => setDeleteSectionTarget(s)}
-                onDeleteAttribute={(attr) => setDeleteAttrTarget(attr)}
-                allTemplates={availableRefTargets}
-                allRefDataTemplates={availableRefDataTargets}
-              />
+          {/* Tabs */}
+          <div className="flex items-center gap-6 border-b border-border">
+            {(["sections", "relationships"] as PageTab[]).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={[
+                  "h-10 flex items-center border-b-2 text-sm font-medium px-1 transition-colors capitalize -mb-px",
+                  activeTab === tab
+                    ? "border-primary text-foreground"
+                    : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+                ].join(" ")}
+                data-testid={`tab-${tab}`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
 
-              {/* Footer add section button */}
-              {!isCatalogLocked && (
-                <div className="flex justify-center pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => openCreateSectionDrawer(templateId)}
-                    className="text-muted-foreground"
-                    data-testid="button-add-section-footer"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    Add Section
-                  </Button>
+          {/* Tab content */}
+          {activeTab === "sections" && (
+            <>
+              {sectionsAreLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="h-16 bg-muted/40 rounded-lg animate-pulse" />
+                  ))}
                 </div>
+              ) : sections.length === 0 && !loadError ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border rounded-xl">
+                  <p className="text-muted-foreground text-sm mb-4">
+                    No sections yet. Create your first section to start defining attributes.
+                  </p>
+                  {!isCatalogLocked && (
+                    <Button
+                      variant="outline"
+                      onClick={() => openCreateSectionDrawer(templateId)}
+                      data-testid="button-add-section-empty"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add Section
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <SectionList
+                    sections={sections}
+                    templateId={templateId}
+                    isReferenceDataTemplate={template?.isReferenceData ?? false}
+                    isCatalogLocked={isCatalogLocked}
+                    onEditSection={(s) => openEditSectionDrawer(templateId, s.id)}
+                    onDeleteSection={(s) => setDeleteSectionTarget(s)}
+                    onDeleteAttribute={(attr) => setDeleteAttrTarget(attr)}
+                    allTemplates={availableRefTargets}
+                    allRefDataTemplates={availableRefDataTargets}
+                  />
+
+                  {!isCatalogLocked && (
+                    <div className="flex justify-center pt-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => openCreateSectionDrawer(templateId)}
+                        className="text-muted-foreground"
+                        data-testid="button-add-section-footer"
+                      >
+                        <Plus className="w-4 h-4 mr-2" />
+                        Add Section
+                      </Button>
+                    </div>
+                  )}
+                </>
               )}
             </>
+          )}
+
+          {activeTab === "relationships" && (
+            <TemplateRelationshipsTab
+              catalogId={catalogId}
+              templateId={templateId}
+              isLocked={isCatalogLocked}
+            />
           )}
         </div>
       </div>
@@ -262,7 +294,11 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
       {/* Section drawer */}
       <SectionDrawer />
 
-      {/* Delete modals */}
+      {/* Relationship drawer & delete */}
+      <RelationshipDrawer catalogId={catalogId} isLocked={isCatalogLocked} />
+      <DeleteRelationshipModal catalogId={catalogId} />
+
+      {/* Section/Attribute delete modals */}
       <DeleteSectionModal
         section={deleteSectionTarget}
         templateId={templateId}

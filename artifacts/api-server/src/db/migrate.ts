@@ -1,13 +1,17 @@
 import type pg from "pg";
 import { logger } from "../lib/logger";
 import { up as migration001 } from "./migrations/001_initial";
+import { up as migration002 } from "./migrations/002_add_node_positions";
 
 interface MigrationFile {
   version: number;
   up: (client: pg.PoolClient) => Promise<void>;
 }
 
-const MIGRATIONS: MigrationFile[] = [{ version: 1, up: migration001 }];
+const MIGRATIONS: MigrationFile[] = [
+  { version: 1, up: migration001 },
+  { version: 2, up: migration002 },
+];
 
 /**
  * Runs all pending migrations against the database.

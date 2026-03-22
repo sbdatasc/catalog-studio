@@ -4,6 +4,8 @@ import {
   type CatalogTemplate,
   type Section,
   type AttributeDefinition,
+  type RelationshipDefinition,
+  type NodePosition,
   type ApiError,
 } from "@/lib/apiClient";
 
@@ -44,6 +46,21 @@ export interface SchemaStore {
   removeAttribute: (sectionId: string, attrId: string) => void;
   reorderAttributesLocal: (sectionId: string, orderedIds: string[]) => void;
 
+  // Relationships (D-03) — keyed by catalogId
+  relationshipsByCatalog: Record<string, RelationshipDefinition[]>;
+  relationshipsLoading: Record<string, boolean>;
+  relationshipsError: Record<string, ApiError | null>;
+  fetchRelationships: (catalogId: string) => Promise<void>;
+  addRelationship: (catalogId: string, r: RelationshipDefinition) => void;
+  updateRelationshipLocal: (r: RelationshipDefinition) => void;
+  removeRelationship: (catalogId: string, relId: string) => void;
+
+  // Node positions (D-03) — keyed by catalogId
+  nodePositionsByCatalog: Record<string, NodePosition[]>;
+  nodePositionsLoading: Record<string, boolean>;
+  fetchNodePositions: (catalogId: string) => Promise<void>;
+  updateNodePositionsLocal: (catalogId: string, positions: NodePosition[]) => void;
+
   reset: () => void;
 }
 
@@ -60,6 +77,11 @@ const initialState = {
   sectionsLoading: {} as Record<string, boolean>,
   attributesBySection: {} as Record<string, AttributeDefinition[]>,
   attributesLoading: {} as Record<string, boolean>,
+  relationshipsByCatalog: {} as Record<string, RelationshipDefinition[]>,
+  relationshipsLoading: {} as Record<string, boolean>,
+  relationshipsError: {} as Record<string, ApiError | null>,
+  nodePositionsByCatalog: {} as Record<string, NodePosition[]>,
+  nodePositionsLoading: {} as Record<string, boolean>,
 };
 
 export const useSchemaStore = create<SchemaStore>((set, get) => ({
@@ -228,6 +250,82 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         },
       };
     }),
+
+  // -------------------------------------------------------------------------
+  // Relationships (D-03)
+  // -------------------------------------------------------------------------
+
+  fetchRelationships: async (catalogId: string) => {
+    set((s) => ({
+      relationshipsLoading: { ...s.relationshipsLoading, [catalogId]: true },
+      relationshipsError: { ...s.relationshipsError, [catalogId]: null },
+    }));
+    const { data, error } = await apiClient.schema.listRelationships(catalogId);
+    if (error) {
+      set((s) => ({
+        relationshipsLoading: { ...s.relationshipsLoading, [catalogId]: false },
+        relationshipsError: { ...s.relationshipsError, [catalogId]: error },
+      }));
+    } else if (data) {
+      set((s) => ({
+        relationshipsByCatalog: { ...s.relationshipsByCatalog, [catalogId]: data },
+        relationshipsLoading: { ...s.relationshipsLoading, [catalogId]: false },
+      }));
+    }
+  },
+
+  addRelationship: (catalogId, r) =>
+    set((state) => ({
+      relationshipsByCatalog: {
+        ...state.relationshipsByCatalog,
+        [catalogId]: [...(state.relationshipsByCatalog[catalogId] ?? []), r],
+      },
+    })),
+
+  updateRelationshipLocal: (r) =>
+    set((state) => {
+      const rels = state.relationshipsByCatalog[r.catalogId];
+      if (!rels) return state;
+      return {
+        relationshipsByCatalog: {
+          ...state.relationshipsByCatalog,
+          [r.catalogId]: rels.map((x) => (x.id === r.id ? r : x)),
+        },
+      };
+    }),
+
+  removeRelationship: (catalogId, relId) =>
+    set((state) => ({
+      relationshipsByCatalog: {
+        ...state.relationshipsByCatalog,
+        [catalogId]: (state.relationshipsByCatalog[catalogId] ?? []).filter((r) => r.id !== relId),
+      },
+    })),
+
+  // -------------------------------------------------------------------------
+  // Node positions (D-03)
+  // -------------------------------------------------------------------------
+
+  fetchNodePositions: async (catalogId: string) => {
+    set((s) => ({ nodePositionsLoading: { ...s.nodePositionsLoading, [catalogId]: true } }));
+    const { data } = await apiClient.schema.getNodePositions(catalogId);
+    if (data) {
+      set((s) => ({
+        nodePositionsByCatalog: { ...s.nodePositionsByCatalog, [catalogId]: data },
+        nodePositionsLoading: { ...s.nodePositionsLoading, [catalogId]: false },
+      }));
+    } else {
+      set((s) => ({ nodePositionsLoading: { ...s.nodePositionsLoading, [catalogId]: false } }));
+    }
+  },
+
+  updateNodePositionsLocal: (catalogId, positions) =>
+    set((state) => ({
+      nodePositionsByCatalog: {
+        ...state.nodePositionsByCatalog,
+        [catalogId]: positions,
+      },
+    })),
 
   reset: () => set(initialState),
 }));

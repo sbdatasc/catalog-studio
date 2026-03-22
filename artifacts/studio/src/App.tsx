@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { CatalogsPage } from "@/pages/CatalogsPage";
 import { DesignerPage } from "@/pages/DesignerPage";
 import { TemplateDetailPage } from "@/components/designer/templates/TemplateDetailPage";
+import { RelationshipsPage } from "@/pages/RelationshipsPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -50,6 +51,14 @@ function Router() {
             templateId={params.templateId}
             tabContext="reference-data"
           />
+        )}
+      />
+
+      {/* Relationships graph page */}
+      <Route
+        path="/catalogs/:catalogId/designer/relationships"
+        component={({ params }) => (
+          <RelationshipsPage catalogId={params.catalogId} />
         )}
       />
 

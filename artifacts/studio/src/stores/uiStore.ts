@@ -47,6 +47,21 @@ interface UiStore {
   confirmSectionDiscard: () => void;
   cancelSectionDiscard: () => void;
 
+  // Relationship drawer (D-03)
+  relDrawerMode: "closed" | "create" | "edit";
+  relDrawerRelationshipId: string | null;
+  relDrawerFromTemplateId: string | null;
+  relDrawerIsDirty: boolean;
+  openCreateRelDrawer: (opts?: { fromTemplateId?: string }) => void;
+  openEditRelDrawer: (relId: string) => void;
+  closeRelDrawer: () => void;
+  setRelDrawerDirty: (dirty: boolean) => void;
+
+  // Delete relationship modal (D-03)
+  deleteRelModalId: string | null;
+  openDeleteRelModal: (id: string) => void;
+  closeDeleteRelModal: () => void;
+
   reset: () => void;
 }
 
@@ -232,6 +247,49 @@ export const useUiStore = create<UiStore>((set, get) => ({
 
   cancelSectionDiscard: () => set({ sectionGuardAction: null }),
 
+  // -------------------------------------------------------------------------
+  // Relationship Drawer (D-03)
+  // -------------------------------------------------------------------------
+
+  relDrawerMode: "closed",
+  relDrawerRelationshipId: null,
+  relDrawerFromTemplateId: null,
+  relDrawerIsDirty: false,
+
+  openCreateRelDrawer: (opts = {}) => {
+    set({
+      relDrawerMode: "create",
+      relDrawerRelationshipId: null,
+      relDrawerFromTemplateId: opts.fromTemplateId ?? null,
+      relDrawerIsDirty: false,
+    });
+  },
+
+  openEditRelDrawer: (relId: string) => {
+    const { relDrawerRelationshipId } = get();
+    if (relDrawerRelationshipId === relId) return;
+    set({
+      relDrawerMode: "edit",
+      relDrawerRelationshipId: relId,
+      relDrawerFromTemplateId: null,
+      relDrawerIsDirty: false,
+    });
+  },
+
+  closeRelDrawer: () =>
+    set({
+      relDrawerMode: "closed",
+      relDrawerRelationshipId: null,
+      relDrawerFromTemplateId: null,
+      relDrawerIsDirty: false,
+    }),
+
+  setRelDrawerDirty: (dirty: boolean) => set({ relDrawerIsDirty: dirty }),
+
+  deleteRelModalId: null,
+  openDeleteRelModal: (id) => set({ deleteRelModalId: id }),
+  closeDeleteRelModal: () => set({ deleteRelModalId: null }),
+
   reset: () =>
     set({
       activeCatalogId: null,
@@ -247,5 +305,10 @@ export const useUiStore = create<UiStore>((set, get) => ({
       sectionDrawerSectionId: null,
       sectionDrawerIsDirty: false,
       sectionGuardAction: null,
+      relDrawerMode: "closed",
+      relDrawerRelationshipId: null,
+      relDrawerFromTemplateId: null,
+      relDrawerIsDirty: false,
+      deleteRelModalId: null,
     }),
 }));

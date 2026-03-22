@@ -3,7 +3,7 @@ import { Database, ChevronLeft } from "lucide-react";
 
 interface Props {
   catalogId: string;
-  tab: "templates" | "reference-data";
+  tab: "templates" | "reference-data" | "relationships";
 }
 
 export function DesignerNav({ catalogId, tab }: Props) {
@@ -70,6 +70,19 @@ export function DesignerNav({ catalogId, tab }: Props) {
           data-testid="nav-tab-reference-data"
         >
           Reference Data
+        </Link>
+
+        <Link
+          href={`${base}/relationships`}
+          className={[
+            "h-12 flex items-center border-b-2 text-sm font-medium px-1 transition-colors",
+            tab === "relationships"
+              ? "border-primary text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground hover:border-border",
+          ].join(" ")}
+          data-testid="nav-tab-relationships"
+        >
+          Relationships
         </Link>
 
         <div

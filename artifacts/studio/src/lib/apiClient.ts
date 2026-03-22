@@ -63,6 +63,26 @@ export interface AttributeDefinition {
   createdAt: string;
 }
 
+export interface RelationshipDefinition {
+  id: string;
+  catalogId: string;
+  fromTemplateId: string;
+  toTemplateId: string;
+  fromTemplateName: string;
+  toTemplateName: string;
+  label: string;
+  cardinality: "1:1" | "1:N" | "M:N";
+  direction: "from" | "to" | "both";
+  entryLinkCount: number;
+  createdAt: string;
+}
+
+export interface NodePosition {
+  templateId: string;
+  x: number;
+  y: number;
+}
+
 export interface ApiError {
   code: string;
   message: string;
@@ -191,6 +211,51 @@ export const apiClient = {
       fetchApi<{ reordered: true }>(`/schema/sections/${sectionId}/attributes/reorder`, {
         method: "POST",
         body: JSON.stringify({ orderedIds }),
+      }),
+
+    // Relationships (D-03)
+    listRelationships: (catalogId: string) =>
+      fetchApi<RelationshipDefinition[]>(`/schema/relationships?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "GET",
+      }),
+    createRelationship: (body: {
+      catalogId: string;
+      fromTemplateId: string;
+      toTemplateId: string;
+      label: string;
+      cardinality: "1:1" | "1:N" | "M:N";
+      direction: "from" | "to" | "both";
+    }) =>
+      fetchApi<RelationshipDefinition>("/schema/relationships", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    updateRelationship: (
+      id: string,
+      body: {
+        label?: string;
+        cardinality?: "1:1" | "1:N" | "M:N";
+        direction?: "from" | "to" | "both";
+      },
+    ) =>
+      fetchApi<RelationshipDefinition>(`/schema/relationships/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    deleteRelationship: (id: string) =>
+      fetchApi<{ deleted: true; entryLinkCount: number }>(`/schema/relationships/${id}`, {
+        method: "DELETE",
+      }),
+
+    // Node positions (D-03)
+    getNodePositions: (catalogId: string) =>
+      fetchApi<NodePosition[]>(`/schema/relationships/positions?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "GET",
+      }),
+    saveNodePositions: (catalogId: string, positions: NodePosition[]) =>
+      fetchApi<{ ok: true }>(`/schema/relationships/positions?catalogId=${encodeURIComponent(catalogId)}`, {
+        method: "POST",
+        body: JSON.stringify({ positions }),
       }),
   },
 };

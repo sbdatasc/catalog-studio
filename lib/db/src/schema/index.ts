@@ -7,3 +7,4 @@ export * from "./schemaVersions";
 export * from "./catalogEntries";
 export * from "./catalogFieldValues";
 export * from "./catalogEntryRelationships";
+export * from "./catalogNodePositions";
