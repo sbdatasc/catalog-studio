@@ -1,10 +1,11 @@
-export interface EntityType {
+export interface CatalogTemplate {
   id: string;
   name: string;
   slug: string;
   description: string | null;
   isSystemSeed: boolean;
-  fieldCount: number;
+  sectionCount: number;
+  attributeCount: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,33 +31,34 @@ async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<Api
         ...options.headers,
       },
     });
-    
+
     const json = await res.json();
-    
+
     if (!res.ok) {
-      return { 
-        data: null, 
-        error: json.error || { code: "UNKNOWN", message: "Something went wrong. Please try again." } 
+      return {
+        data: null,
+        error: json.error || { code: "UNKNOWN", message: "Something went wrong. Please try again." },
       };
     }
-    
+
     return { data: json.data as T, error: null };
-  } catch (err) {
-    return { 
-      data: null, 
-      error: { code: "UNKNOWN", message: "Something went wrong. Please try again." } 
+  } catch {
+    return {
+      data: null,
+      error: { code: "UNKNOWN", message: "Something went wrong. Please try again." },
     };
   }
 }
 
 export const apiClient = {
   schema: {
-    listEntityTypes: () => fetchApi<EntityType[]>("/schema/entity-types", { method: "GET" }),
-    createEntityType: (body: { name: string; description?: string | null }) => 
-      fetchApi<EntityType>("/schema/entity-types", { method: "POST", body: JSON.stringify(body) }),
-    updateEntityType: (id: string, body: { name?: string; description?: string | null }) => 
-      fetchApi<EntityType>(`/schema/entity-types/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
-    deleteEntityType: (id: string) => 
-      fetchApi<{ deleted: true }>(`/schema/entity-types/${id}`, { method: "DELETE" }),
-  }
+    listTemplates: () =>
+      fetchApi<CatalogTemplate[]>("/schema/templates", { method: "GET" }),
+    createTemplate: (body: { name: string; description?: string | null }) =>
+      fetchApi<CatalogTemplate>("/schema/templates", { method: "POST", body: JSON.stringify(body) }),
+    updateTemplate: (id: string, body: { name?: string; description?: string | null }) =>
+      fetchApi<CatalogTemplate>(`/schema/templates/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+    deleteTemplate: (id: string) =>
+      fetchApi<{ deleted: true }>(`/schema/templates/${id}`, { method: "DELETE" }),
+  },
 };

@@ -1,48 +1,48 @@
 import { create } from "zustand";
-import { apiClient, EntityType, ApiError } from "@/lib/apiClient";
+import { apiClient, type CatalogTemplate, type ApiError } from "@/lib/apiClient";
 
 export interface SchemaStore {
-  entityTypes: EntityType[];
-  entityTypesLoading: boolean;
-  entityTypesError: ApiError | null;
-  fetchEntityTypes: () => Promise<void>;
-  addEntityType: (et: EntityType) => void;
-  updateEntityType: (et: EntityType) => void;
-  removeEntityType: (id: string) => void;
+  templates: CatalogTemplate[];
+  templatesLoading: boolean;
+  templatesError: ApiError | null;
+  fetchTemplates: () => Promise<void>;
+  addTemplate: (t: CatalogTemplate) => void;
+  updateTemplate: (t: CatalogTemplate) => void;
+  removeTemplate: (id: string) => void;
 }
 
 export const useSchemaStore = create<SchemaStore>((set) => ({
-  entityTypes: [],
-  entityTypesLoading: true,
-  entityTypesError: null,
+  templates: [],
+  templatesLoading: true,
+  templatesError: null,
 
-  fetchEntityTypes: async () => {
-    set({ entityTypesLoading: true, entityTypesError: null });
-    const { data, error } = await apiClient.schema.listEntityTypes();
+  fetchTemplates: async () => {
+    set({ templatesLoading: true, templatesError: null });
+    const { data, error } = await apiClient.schema.listTemplates();
     if (error) {
-      set({ entityTypesError: error, entityTypesLoading: false });
+      set({ templatesError: error, templatesLoading: false });
     } else if (data) {
-      set({ entityTypes: data, entityTypesLoading: false });
+      set({ templates: data, templatesLoading: false });
     }
   },
 
-  addEntityType: (et: EntityType) => {
+  addTemplate: (t: CatalogTemplate) => {
     set((state) => ({
-      entityTypes: [...state.entityTypes, et].sort((a, b) => a.name.localeCompare(b.name))
+      templates: [...state.templates, t].sort((a, b) => a.name.localeCompare(b.name)),
     }));
   },
 
-  updateEntityType: (et: EntityType) => {
+  updateTemplate: (t: CatalogTemplate) => {
     set((state) => ({
-      entityTypes: state.entityTypes
-        .map((t) => (t.id === et.id ? et : t))
-        .sort((a, b) => a.name.localeCompare(b.name))
+      templates: state.templates
+        .map((x) => (x.id === t.id ? t : x))
+        .sort((a, b) => a.name.localeCompare(b.name)),
     }));
   },
 
-  removeEntityType: (id: string) => {
+  removeTemplate: (id: string) => {
     set((state) => ({
-      entityTypes: state.entityTypes.filter((t) => t.id !== id)
+      templates: state.templates.filter((t) => t.id !== id),
     }));
-  }
+  },
 }));

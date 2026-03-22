@@ -3,32 +3,32 @@ import { create } from "zustand";
 interface UiStore {
   // Drawer
   drawerMode: "closed" | "create" | "edit";
-  drawerEntityTypeId: string | null;
+  drawerTemplateId: string | null;
   drawerIsDirty: boolean;
-  
+
   // Guard Modal State
   guardAction: (() => void) | null;
-  
+
   // Actions
   setDrawerIsDirty: (isDirty: boolean) => void;
   openCreateDrawer: () => void;
   openEditDrawer: (id: string) => void;
-  requestCloseDrawer: () => void; // Checks dirty state
-  closeDrawer: () => void;        // Force close
-  
+  requestCloseDrawer: () => void;
+  closeDrawer: () => void;
+
   // Guard Actions
   confirmDiscard: () => void;
   cancelDiscard: () => void;
 
   // Delete Modal
-  deleteModalEntityTypeId: string | null;
+  deleteModalTemplateId: string | null;
   openDeleteModal: (id: string) => void;
   closeDeleteModal: () => void;
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
   drawerMode: "closed",
-  drawerEntityTypeId: null,
+  drawerTemplateId: null,
   drawerIsDirty: false,
   guardAction: null,
 
@@ -37,50 +37,54 @@ export const useUiStore = create<UiStore>((set, get) => ({
   openCreateDrawer: () => {
     const { drawerIsDirty } = get();
     if (drawerIsDirty) {
-      set({ 
-        guardAction: () => set({ drawerMode: "create", drawerEntityTypeId: null, drawerIsDirty: false, guardAction: null }) 
+      set({
+        guardAction: () =>
+          set({ drawerMode: "create", drawerTemplateId: null, drawerIsDirty: false, guardAction: null }),
       });
     } else {
-      set({ drawerMode: "create", drawerEntityTypeId: null, drawerIsDirty: false });
+      set({ drawerMode: "create", drawerTemplateId: null, drawerIsDirty: false });
     }
   },
 
   openEditDrawer: (id: string) => {
-    const { drawerIsDirty, drawerEntityTypeId } = get();
-    if (drawerEntityTypeId === id) return;
-    
+    const { drawerIsDirty, drawerTemplateId } = get();
+    if (drawerTemplateId === id) return;
+
     if (drawerIsDirty) {
-      set({ 
-        guardAction: () => set({ drawerMode: "edit", drawerEntityTypeId: id, drawerIsDirty: false, guardAction: null }) 
+      set({
+        guardAction: () =>
+          set({ drawerMode: "edit", drawerTemplateId: id, drawerIsDirty: false, guardAction: null }),
       });
     } else {
-      set({ drawerMode: "edit", drawerEntityTypeId: id, drawerIsDirty: false });
+      set({ drawerMode: "edit", drawerTemplateId: id, drawerIsDirty: false });
     }
   },
 
   requestCloseDrawer: () => {
     const { drawerIsDirty } = get();
     if (drawerIsDirty) {
-      set({ 
-        guardAction: () => set({ drawerMode: "closed", drawerEntityTypeId: null, drawerIsDirty: false, guardAction: null }) 
+      set({
+        guardAction: () =>
+          set({ drawerMode: "closed", drawerTemplateId: null, drawerIsDirty: false, guardAction: null }),
       });
     } else {
-      set({ drawerMode: "closed", drawerEntityTypeId: null, drawerIsDirty: false });
+      set({ drawerMode: "closed", drawerTemplateId: null, drawerIsDirty: false });
     }
   },
 
-  closeDrawer: () => set({ drawerMode: "closed", drawerEntityTypeId: null, drawerIsDirty: false, guardAction: null }),
+  closeDrawer: () =>
+    set({ drawerMode: "closed", drawerTemplateId: null, drawerIsDirty: false, guardAction: null }),
 
   confirmDiscard: () => {
     const { guardAction } = get();
     if (guardAction) guardAction();
-    else set({ drawerMode: "closed", drawerEntityTypeId: null, drawerIsDirty: false });
+    else set({ drawerMode: "closed", drawerTemplateId: null, drawerIsDirty: false });
     set({ guardAction: null });
   },
 
   cancelDiscard: () => set({ guardAction: null }),
 
-  deleteModalEntityTypeId: null,
-  openDeleteModal: (id) => set({ deleteModalEntityTypeId: id }),
-  closeDeleteModal: () => set({ deleteModalEntityTypeId: null }),
+  deleteModalTemplateId: null,
+  openDeleteModal: (id) => set({ deleteModalTemplateId: id }),
+  closeDeleteModal: () => set({ deleteModalTemplateId: null }),
 }));

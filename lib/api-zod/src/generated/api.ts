@@ -41,7 +41,9 @@ export const ListEntityTypesResponse = zod.object({
             "UNPROCESSABLE",
             "INTERNAL_ERROR",
             "VALIDATION_ERROR",
-            "ENTITY_TYPE_IN_USE",
+            "TEMPLATE_IN_USE",
+            "SECTION_IN_USE",
+            "REFERENCE_DATA_IN_USE",
           ])
           .describe("Typed error codes for all application errors"),
         message: zod.string().describe("Human-readable error message"),
@@ -122,7 +124,9 @@ export const UpdateEntityTypeResponse = zod.object({
             "UNPROCESSABLE",
             "INTERNAL_ERROR",
             "VALIDATION_ERROR",
-            "ENTITY_TYPE_IN_USE",
+            "TEMPLATE_IN_USE",
+            "SECTION_IN_USE",
+            "REFERENCE_DATA_IN_USE",
           ])
           .describe("Typed error codes for all application errors"),
         message: zod.string().describe("Human-readable error message"),
@@ -173,7 +177,9 @@ export const DeleteEntityTypeResponse = zod.object({
             "UNPROCESSABLE",
             "INTERNAL_ERROR",
             "VALIDATION_ERROR",
-            "ENTITY_TYPE_IN_USE",
+            "TEMPLATE_IN_USE",
+            "SECTION_IN_USE",
+            "REFERENCE_DATA_IN_USE",
           ])
           .describe("Typed error codes for all application errors"),
         message: zod.string().describe("Human-readable error message"),
@@ -222,7 +228,9 @@ export const HealthCheckResponse = zod
               "UNPROCESSABLE",
               "INTERNAL_ERROR",
               "VALIDATION_ERROR",
-              "ENTITY_TYPE_IN_USE",
+              "TEMPLATE_IN_USE",
+              "SECTION_IN_USE",
+              "REFERENCE_DATA_IN_USE",
             ])
             .describe("Typed error codes for all application errors"),
           message: zod.string().describe("Human-readable error message"),

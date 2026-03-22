@@ -9,34 +9,34 @@ import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
 
 export function EntityTypeManager() {
-  const { fetchEntityTypes } = useSchemaStore();
+  const { fetchTemplates } = useSchemaStore();
   const { openCreateDrawer } = useUiStore();
 
   useEffect(() => {
-    fetchEntityTypes();
-  }, [fetchEntityTypes]);
+    fetchTemplates();
+  }, [fetchTemplates]);
 
   return (
     <div className="flex-1 overflow-auto bg-background">
       <div className="max-w-[1400px] mx-auto p-6 md:p-8 lg:p-10 space-y-8">
-        
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold tracking-tight text-foreground">
-              Entity Types
+              Templates
             </h1>
             <p className="mt-2 text-muted-foreground text-base">
               Define the shape and structure of your catalog's metadata.
             </p>
           </div>
-          
-          <Button 
+
+          <Button
             onClick={openCreateDrawer}
             className="shadow-md shadow-primary/10 hover:-translate-y-0.5 transition-transform"
-            data-testid="button-new-entity-type"
+            data-testid="button-new-template"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Entity Type
+            New Template
           </Button>
         </div>
 

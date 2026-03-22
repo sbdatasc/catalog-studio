@@ -1,17 +1,17 @@
 import { pgTable, uuid, varchar, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import { schemaEntityTypesTable } from "./schemaEntityTypes";
+import { schemaTemplatesTable } from "./schemaTemplates";
 
 export const schemaRelationshipsTable = pgTable("schema_relationships", {
   id: uuid("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  fromEntityTypeId: uuid("from_entity_type_id")
+  fromTemplateId: uuid("from_template_id")
     .notNull()
-    .references(() => schemaEntityTypesTable.id, { onDelete: "cascade" }),
-  toEntityTypeId: uuid("to_entity_type_id")
+    .references(() => schemaTemplatesTable.id, { onDelete: "cascade" }),
+  toTemplateId: uuid("to_template_id")
     .notNull()
-    .references(() => schemaEntityTypesTable.id, { onDelete: "cascade" }),
+    .references(() => schemaTemplatesTable.id, { onDelete: "cascade" }),
   label: varchar("label", { length: 100 }).notNull(),
   cardinality: varchar("cardinality", { length: 10 })
     .notNull()

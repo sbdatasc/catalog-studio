@@ -1,11 +1,11 @@
 import { z } from "zod/v4";
 
 // ---------------------------------------------------------------------------
-// FieldType enum — the complete set of MVP field types (no additions without a new PRD)
+// AttributeType enum — complete set of MVP attribute types
 // ---------------------------------------------------------------------------
 
-export type FieldType = (typeof FieldType)[keyof typeof FieldType];
-export const FieldType = {
+export type AttributeType = (typeof AttributeType)[keyof typeof AttributeType];
+export const AttributeType = {
   STRING: "string",
   TEXT: "text",
   NUMBER: "number",
@@ -13,77 +13,108 @@ export const FieldType = {
   DATE: "date",
   ENUM: "enum",
   REFERENCE: "reference",
+  REFERENCE_DATA: "reference_data",
 } as const;
 
-export const FieldTypeValues = Object.values(FieldType) as [
+export const AttributeTypeValues = Object.values(AttributeType) as [
   string,
   ...string[],
 ];
 
 // ---------------------------------------------------------------------------
-// Config Zod schemas — validated at write time in schemaService
+// Config Zod schemas — validated at write time in templateService
 // ---------------------------------------------------------------------------
 
-export const EnumFieldConfigSchema = z.object({
-  fieldType: z.literal("enum"),
+export const EnumAttributeConfigSchema = z.object({
+  attributeType: z.literal("enum"),
   config: z.object({ options: z.array(z.string()).min(1) }),
 });
 
-export const ReferenceFieldConfigSchema = z.object({
-  fieldType: z.literal("reference"),
-  config: z.object({ targetEntityTypeId: z.string().uuid() }),
+export const ReferenceAttributeConfigSchema = z.object({
+  attributeType: z.literal("reference"),
+  config: z.object({ targetTemplateId: z.string().uuid() }),
 });
 
-export const SimpleFieldConfigSchema = z.object({
-  fieldType: z.enum(["string", "text", "number", "boolean", "date"]),
+export const ReferenceDataAttributeConfigSchema = z.object({
+  attributeType: z.literal("reference_data"),
+  config: z.object({ referenceDatasetId: z.string().uuid() }),
+});
+
+export const SimpleAttributeConfigSchema = z.object({
+  attributeType: z.enum(["string", "text", "number", "boolean", "date"]),
   config: z.null(),
 });
 
-export const FieldConfigSchema = z.discriminatedUnion("fieldType", [
-  EnumFieldConfigSchema,
-  ReferenceFieldConfigSchema,
-  SimpleFieldConfigSchema,
+export const AttributeConfigSchema = z.discriminatedUnion("attributeType", [
+  EnumAttributeConfigSchema,
+  ReferenceAttributeConfigSchema,
+  ReferenceDataAttributeConfigSchema,
+  SimpleAttributeConfigSchema,
 ]);
 
-export type FieldConfig =
+export type AttributeConfig =
   | { options: string[] }
-  | { targetEntityTypeId: string }
+  | { targetTemplateId: string }
+  | { referenceDatasetId: string }
   | null;
 
 // ---------------------------------------------------------------------------
 // Schema snapshot types — the immutable publish snapshot shape
 // ---------------------------------------------------------------------------
 
-export interface SnapshotField {
+export interface SnapshotAttribute {
   id: string;
   name: string;
   slug: string;
-  fieldType: FieldType;
+  description: string | null;
+  attributeType: AttributeType;
   required: boolean;
   displayOrder: number;
-  config: FieldConfig;
+  config: AttributeConfig;
+}
+
+export interface SnapshotSection {
+  id: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+  attributes: SnapshotAttribute[];
 }
 
 export interface SnapshotRelationship {
   id: string;
-  toEntityTypeId: string;
-  fromEntityTypeId: string;
+  fromTemplateId: string;
+  toTemplateId: string;
   label: string;
   cardinality: "1:1" | "1:N" | "M:N";
   direction: "from" | "to" | "both";
 }
 
-export interface SnapshotEntityType {
+export interface SnapshotTemplate {
   id: string;
   name: string;
   slug: string;
   description: string | null;
-  fields: SnapshotField[];
+  isSystemSeed: boolean;
+  sections: SnapshotSection[];
   relationships: SnapshotRelationship[];
+}
+
+export interface SnapshotReferenceDataset {
+  id: string;
+  name: string;
+  values: Array<{
+    id: string;
+    label: string;
+    value: string;
+    displayOrder: number;
+    isActive: boolean;
+  }>;
 }
 
 export interface SchemaSnapshot {
   version: number;
   publishedAt: string;
-  entityTypes: SnapshotEntityType[];
+  templates: SnapshotTemplate[];
+  referenceDatasetsSnapshot: SnapshotReferenceDataset[];
 }

@@ -1,7 +1,11 @@
 import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
-import { schemaEntityTypesTable, schemaFieldsTable } from "@workspace/db";
+import {
+  schemaTemplatesTable,
+  schemaSectionsTable,
+  schemaAttributesTable,
+} from "@workspace/db";
 import { logger } from "../lib/logger";
 
 type DbInstance = NodePgDatabase<typeof schema>;
@@ -13,133 +17,189 @@ function toSlug(name: string): string {
     .replace(/^_|_$/g, "");
 }
 
-interface SeedField {
+interface SeedAttribute {
   name: string;
-  fieldType: schema.FieldType;
+  attributeType: schema.AttributeType;
   required: boolean;
   displayOrder: number;
-  config: schema.FieldConfig;
+  config: schema.AttributeConfig;
+  description?: string | null;
 }
 
-interface SeedEntityType {
+interface SeedSection {
+  name: string;
+  description?: string | null;
+  displayOrder: number;
+  attributes: SeedAttribute[];
+}
+
+interface SeedTemplate {
   name: string;
   description: string | null;
-  fields: SeedField[];
+  sections: SeedSection[];
 }
 
-const SEED_ENTITY_TYPES: SeedEntityType[] = [
+const SEED_TEMPLATES: SeedTemplate[] = [
   {
     name: "Data Asset",
     description: "A data asset such as a table, dataset, or report",
-    fields: [
-      { name: "Name", fieldType: "string", required: true, displayOrder: 0, config: null },
-      { name: "Description", fieldType: "text", required: false, displayOrder: 1, config: null },
-      { name: "Source System", fieldType: "string", required: false, displayOrder: 2, config: null },
-      { name: "Owner", fieldType: "string", required: false, displayOrder: 3, config: null },
-      { name: "Tags", fieldType: "string", required: false, displayOrder: 4, config: null },
+    sections: [
+      {
+        name: "General",
+        description: null,
+        displayOrder: 0,
+        attributes: [
+          { name: "Name", attributeType: "string", required: true, displayOrder: 0, config: null },
+          { name: "Description", attributeType: "text", required: false, displayOrder: 1, config: null },
+          { name: "Source System", attributeType: "string", required: false, displayOrder: 2, config: null },
+          { name: "Owner", attributeType: "string", required: false, displayOrder: 3, config: null },
+          { name: "Tags", attributeType: "string", required: false, displayOrder: 4, config: null },
+        ],
+      },
     ],
   },
   {
     name: "Pipeline",
     description: "A data pipeline or ETL job",
-    fields: [
-      { name: "Name", fieldType: "string", required: true, displayOrder: 0, config: null },
-      { name: "Description", fieldType: "text", required: false, displayOrder: 1, config: null },
-      { name: "Schedule", fieldType: "string", required: false, displayOrder: 2, config: null },
+    sections: [
       {
-        name: "Status",
-        fieldType: "enum",
-        required: false,
-        displayOrder: 3,
-        config: { options: ["active", "paused", "deprecated"] },
+        name: "General",
+        description: null,
+        displayOrder: 0,
+        attributes: [
+          { name: "Name", attributeType: "string", required: true, displayOrder: 0, config: null },
+          { name: "Description", attributeType: "text", required: false, displayOrder: 1, config: null },
+          { name: "Schedule", attributeType: "string", required: false, displayOrder: 2, config: null },
+          {
+            name: "Status",
+            attributeType: "enum",
+            required: false,
+            displayOrder: 3,
+            config: { options: ["active", "paused", "deprecated"] },
+          },
+          { name: "Owner", attributeType: "string", required: false, displayOrder: 4, config: null },
+        ],
       },
-      { name: "Owner", fieldType: "string", required: false, displayOrder: 4, config: null },
     ],
   },
   {
     name: "Glossary Term",
     description: "A business glossary term with an authoritative definition",
-    fields: [
-      { name: "Term", fieldType: "string", required: true, displayOrder: 0, config: null },
-      { name: "Definition", fieldType: "text", required: true, displayOrder: 1, config: null },
-      { name: "Domain", fieldType: "string", required: false, displayOrder: 2, config: null },
+    sections: [
       {
-        name: "Status",
-        fieldType: "enum",
-        required: false,
-        displayOrder: 3,
-        config: { options: ["draft", "approved", "deprecated"] },
+        name: "General",
+        description: null,
+        displayOrder: 0,
+        attributes: [
+          { name: "Term", attributeType: "string", required: true, displayOrder: 0, config: null },
+          { name: "Definition", attributeType: "text", required: true, displayOrder: 1, config: null },
+          { name: "Domain", attributeType: "string", required: false, displayOrder: 2, config: null },
+          {
+            name: "Status",
+            attributeType: "enum",
+            required: false,
+            displayOrder: 3,
+            config: { options: ["draft", "approved", "deprecated"] },
+          },
+        ],
       },
     ],
   },
   {
     name: "Person / Team",
     description: "A person or team responsible for data assets",
-    fields: [
-      { name: "Name", fieldType: "string", required: true, displayOrder: 0, config: null },
-      { name: "Role", fieldType: "string", required: false, displayOrder: 1, config: null },
-      { name: "Email", fieldType: "string", required: false, displayOrder: 2, config: null },
-      { name: "Department", fieldType: "string", required: false, displayOrder: 3, config: null },
+    sections: [
+      {
+        name: "General",
+        description: null,
+        displayOrder: 0,
+        attributes: [
+          { name: "Name", attributeType: "string", required: true, displayOrder: 0, config: null },
+          { name: "Role", attributeType: "string", required: false, displayOrder: 1, config: null },
+          { name: "Email", attributeType: "string", required: false, displayOrder: 2, config: null },
+          { name: "Department", attributeType: "string", required: false, displayOrder: 3, config: null },
+        ],
+      },
     ],
   },
   {
     name: "System / Source",
     description: "A system or data source that produces data assets",
-    fields: [
-      { name: "Name", fieldType: "string", required: true, displayOrder: 0, config: null },
+    sections: [
       {
-        name: "Type",
-        fieldType: "enum",
-        required: false,
-        displayOrder: 1,
-        config: { options: ["database", "API", "file system", "SaaS", "other"] },
+        name: "General",
+        description: null,
+        displayOrder: 0,
+        attributes: [
+          { name: "Name", attributeType: "string", required: true, displayOrder: 0, config: null },
+          {
+            name: "Type",
+            attributeType: "enum",
+            required: false,
+            displayOrder: 1,
+            config: { options: ["database", "API", "file system", "SaaS", "other"] },
+          },
+          { name: "Description", attributeType: "text", required: false, displayOrder: 2, config: null },
+          { name: "Owner", attributeType: "string", required: false, displayOrder: 3, config: null },
+        ],
       },
-      { name: "Description", fieldType: "text", required: false, displayOrder: 2, config: null },
-      { name: "Owner", fieldType: "string", required: false, displayOrder: 3, config: null },
     ],
   },
 ];
 
 /**
- * Seeds the 5 default entity types if the database is empty.
+ * Seeds the 5 default templates (each with a "General" section and attributes) if the database is empty.
  * Idempotent — calling this on a populated database is a no-op.
  */
 export async function seedIfRequired(db: DbInstance): Promise<void> {
-  const existing = await db.select({ id: schemaEntityTypesTable.id }).from(schemaEntityTypesTable).limit(1);
+  const existing = await db.select({ id: schemaTemplatesTable.id }).from(schemaTemplatesTable).limit(1);
   if (existing.length > 0) {
-    logger.info("Seed check: entity types already exist — skipping seed");
+    logger.info("Seed check: templates already exist — skipping seed");
     return;
   }
 
-  logger.info("Seeding 5 default entity types...");
+  logger.info("Seeding 5 default templates...");
 
-  for (const entityTypeDef of SEED_ENTITY_TYPES) {
-    const slug = toSlug(entityTypeDef.name);
+  for (const templateDef of SEED_TEMPLATES) {
+    const slug = toSlug(templateDef.name);
 
-    const [entityType] = await db
-      .insert(schemaEntityTypesTable)
+    const [template] = await db
+      .insert(schemaTemplatesTable)
       .values({
-        name: entityTypeDef.name,
+        name: templateDef.name,
         slug,
-        description: entityTypeDef.description,
+        description: templateDef.description,
         isSystemSeed: true,
       })
       .returning();
 
-    for (const fieldDef of entityTypeDef.fields) {
-      await db.insert(schemaFieldsTable).values({
-        entityTypeId: entityType.id,
-        name: fieldDef.name,
-        slug: toSlug(fieldDef.name),
-        fieldType: fieldDef.fieldType,
-        required: fieldDef.required,
-        displayOrder: fieldDef.displayOrder,
-        config: fieldDef.config,
-      });
+    for (const sectionDef of templateDef.sections) {
+      const [section] = await db
+        .insert(schemaSectionsTable)
+        .values({
+          templateId: template.id,
+          name: sectionDef.name,
+          description: sectionDef.description ?? null,
+          displayOrder: sectionDef.displayOrder,
+        })
+        .returning();
+
+      for (const attrDef of sectionDef.attributes) {
+        await db.insert(schemaAttributesTable).values({
+          sectionId: section.id,
+          name: attrDef.name,
+          slug: toSlug(attrDef.name),
+          description: attrDef.description ?? null,
+          attributeType: attrDef.attributeType,
+          required: attrDef.required,
+          displayOrder: attrDef.displayOrder,
+          config: attrDef.config,
+        });
+      }
     }
 
-    logger.info({ name: entityTypeDef.name }, "Seeded entity type");
+    logger.info({ name: templateDef.name }, "Seeded template");
   }
 
-  logger.info("Seed complete: 5 entity types created");
+  logger.info("Seed complete: 5 templates created");
 }

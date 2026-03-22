@@ -11,7 +11,7 @@ export const catalogFieldValuesTable = pgTable(
     entryId: uuid("entry_id")
       .notNull()
       .references(() => catalogEntriesTable.id, { onDelete: "cascade" }),
-    fieldId: uuid("field_id").notNull(),
+    attributeId: uuid("attribute_id").notNull(),
     valueText: text("value_text"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
@@ -20,7 +20,7 @@ export const catalogFieldValuesTable = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (t) => [unique("catalog_field_values_entry_field_unique").on(t.entryId, t.fieldId)],
+  (t) => [unique("catalog_field_values_entry_attr_unique").on(t.entryId, t.attributeId)],
 );
 
 export type CatalogFieldValueRow = typeof catalogFieldValuesTable.$inferSelect;

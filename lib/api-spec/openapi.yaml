@@ -159,7 +159,9 @@ components:
         - UNPROCESSABLE
         - INTERNAL_ERROR
         - VALIDATION_ERROR
-        - ENTITY_TYPE_IN_USE
+        - TEMPLATE_IN_USE
+        - SECTION_IN_USE
+        - REFERENCE_DATA_IN_USE
       description: Typed error codes for all application errors
 
     AppError:

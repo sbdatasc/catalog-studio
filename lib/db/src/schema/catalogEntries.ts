@@ -11,8 +11,8 @@ export const catalogEntriesTable = pgTable("catalog_entries", {
   id: uuid("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  entityTypeId: uuid("entity_type_id").notNull(),
-  entityTypeSlug: varchar("entity_type_slug", { length: 100 }).notNull(),
+  templateId: uuid("template_id").notNull(),
+  templateSlug: varchar("template_slug", { length: 100 }).notNull(),
   schemaVersionId: uuid("schema_version_id")
     .notNull()
     .references(() => schemaVersionsTable.id),
