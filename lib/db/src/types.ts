@@ -35,9 +35,10 @@ export const ReferenceAttributeConfigSchema = z.object({
   config: z.object({ targetTemplateId: z.string().uuid() }),
 });
 
+// PRD-02 Amendment v2: reference_data config now uses targetTemplateId (not referenceDatasetId)
 export const ReferenceDataAttributeConfigSchema = z.object({
   attributeType: z.literal("reference_data"),
-  config: z.object({ referenceDatasetId: z.string().uuid() }),
+  config: z.object({ targetTemplateId: z.string().uuid() }),
 });
 
 export const SimpleAttributeConfigSchema = z.object({
@@ -55,11 +56,10 @@ export const AttributeConfigSchema = z.discriminatedUnion("attributeType", [
 export type AttributeConfig =
   | { options: string[] }
   | { targetTemplateId: string }
-  | { referenceDatasetId: string }
   | null;
 
 // ---------------------------------------------------------------------------
-// Schema snapshot types — the immutable publish snapshot shape
+// Schema snapshot types — v2 shape (PRD-02 Amendment v2)
 // ---------------------------------------------------------------------------
 
 export interface SnapshotAttribute {
@@ -96,25 +96,16 @@ export interface SnapshotTemplate {
   slug: string;
   description: string | null;
   isSystemSeed: boolean;
+  isReferenceData: boolean;
   sections: SnapshotSection[];
   relationships: SnapshotRelationship[];
 }
 
-export interface SnapshotReferenceDataset {
-  id: string;
-  name: string;
-  values: Array<{
-    id: string;
-    label: string;
-    value: string;
-    displayOrder: number;
-    isActive: boolean;
-  }>;
-}
-
+// SchemaSnapshot v2 — includes catalogId/catalogName, no referenceDatasetsSnapshot
 export interface SchemaSnapshot {
   version: number;
   publishedAt: string;
+  catalogId: string;
+  catalogName: string;
   templates: SnapshotTemplate[];
-  referenceDatasetsSnapshot: SnapshotReferenceDataset[];
 }

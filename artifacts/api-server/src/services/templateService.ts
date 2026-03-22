@@ -1,13 +1,13 @@
-import { eq, asc, count, sql, inArray } from "drizzle-orm";
+import { eq, asc, count, sql, and } from "drizzle-orm";
 import {
+  catalogsTable,
   schemaTemplatesTable,
   schemaSectionsTable,
   schemaAttributesTable,
   schemaRelationshipsTable,
   schemaVersionsTable,
-  referenceDatasetsTable,
-  referenceValuesTable,
   catalogEntriesTable,
+  catalogFieldValuesTable,
   AttributeConfigSchema,
   type AttributeType,
   type AttributeConfig,
@@ -26,10 +26,12 @@ import { toSlug } from "../lib/utils";
 
 export interface CatalogTemplate {
   id: string;
+  catalogId: string;
   name: string;
   slug: string;
   description: string | null;
   isSystemSeed: boolean;
+  isReferenceData: boolean;
   sectionCount: number;
   attributeCount: number;
   createdAt: Date;
@@ -86,6 +88,7 @@ export interface SchemaVersion {
 export interface CreateTemplateInput {
   name: string;
   description?: string | null;
+  isReferenceData?: boolean;
 }
 
 export interface UpdateTemplateInput {
@@ -131,7 +134,69 @@ export interface CreateRelationshipInput {
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Catalog-lock helpers
+// ---------------------------------------------------------------------------
+
+async function assertCatalogNotLocked(catalogId: string): Promise<void> {
+  const db = getDb();
+  const [catalog] = await db
+    .select({ status: catalogsTable.status })
+    .from(catalogsTable)
+    .where(eq(catalogsTable.id, catalogId))
+    .limit(1);
+
+  if (!catalog) {
+    throw new ServiceError("NOT_FOUND", `Catalog "${catalogId}" not found`);
+  }
+  if (catalog.status !== "draft") {
+    throw new ServiceError(
+      "CATALOG_LOCKED",
+      "This catalog is locked for editing. Duplicate it to make changes.",
+    );
+  }
+}
+
+async function getCatalogIdForTemplate(templateId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: schemaTemplatesTable.catalogId })
+    .from(schemaTemplatesTable)
+    .where(eq(schemaTemplatesTable.id, templateId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Template "${templateId}" not found`);
+  return row.catalogId;
+}
+
+async function getCatalogIdForSection(sectionId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: schemaTemplatesTable.catalogId })
+    .from(schemaSectionsTable)
+    .innerJoin(schemaTemplatesTable, eq(schemaSectionsTable.templateId, schemaTemplatesTable.id))
+    .where(eq(schemaSectionsTable.id, sectionId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Section "${sectionId}" not found`);
+  return row.catalogId;
+}
+
+async function getCatalogIdForAttribute(attributeId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: schemaTemplatesTable.catalogId })
+    .from(schemaAttributesTable)
+    .innerJoin(schemaSectionsTable, eq(schemaAttributesTable.sectionId, schemaSectionsTable.id))
+    .innerJoin(schemaTemplatesTable, eq(schemaSectionsTable.templateId, schemaTemplatesTable.id))
+    .where(eq(schemaAttributesTable.id, attributeId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Attribute "${attributeId}" not found`);
+  return row.catalogId;
+}
+
+// ---------------------------------------------------------------------------
+// Attribute validation helpers
 // ---------------------------------------------------------------------------
 
 function assertValidAttributeType(attributeType: string): asserts attributeType is AttributeType {
@@ -159,10 +224,12 @@ function validateAttributeConfig(
 // Template CRUD
 // ---------------------------------------------------------------------------
 
-export async function listTemplates(): Promise<CatalogTemplate[]> {
+export async function listTemplates(
+  catalogId: string,
+  isReferenceData?: boolean,
+): Promise<CatalogTemplate[]> {
   const db = getDb();
 
-  // Count sections per template
   const sectionCounts = await db
     .select({
       templateId: schemaSectionsTable.templateId,
@@ -173,7 +240,6 @@ export async function listTemplates(): Promise<CatalogTemplate[]> {
 
   const sectionCountMap = new Map(sectionCounts.map((r) => [r.templateId, Number(r.sectionCount)]));
 
-  // Count attributes per template (via sections)
   const attrCounts = await db
     .select({
       templateId: schemaSectionsTable.templateId,
@@ -185,9 +251,15 @@ export async function listTemplates(): Promise<CatalogTemplate[]> {
 
   const attrCountMap = new Map(attrCounts.map((r) => [r.templateId, Number(r.attributeCount)]));
 
+  const conditions = [eq(schemaTemplatesTable.catalogId, catalogId)];
+  if (isReferenceData !== undefined) {
+    conditions.push(eq(schemaTemplatesTable.isReferenceData, isReferenceData));
+  }
+
   const rows = await db
     .select()
     .from(schemaTemplatesTable)
+    .where(and(...conditions))
     .orderBy(asc(schemaTemplatesTable.name));
 
   return rows.map((r) => ({
@@ -227,27 +299,33 @@ export async function getTemplate(id: string): Promise<CatalogTemplate> {
   };
 }
 
-export async function createTemplate(input: CreateTemplateInput): Promise<CatalogTemplate> {
+export async function createTemplate(
+  catalogId: string,
+  input: CreateTemplateInput,
+): Promise<CatalogTemplate> {
   const db = getDb();
+  await assertCatalogNotLocked(catalogId);
 
   const existing = await db
     .select({ id: schemaTemplatesTable.id })
     .from(schemaTemplatesTable)
-    .where(eq(schemaTemplatesTable.name, input.name))
+    .where(and(eq(schemaTemplatesTable.catalogId, catalogId), eq(schemaTemplatesTable.name, input.name)))
     .limit(1);
 
   if (existing.length > 0) {
-    throw new ServiceError("CONFLICT", `A template named "${input.name}" already exists`);
+    throw new ServiceError("CONFLICT", `A template named "${input.name}" already exists in this catalog`);
   }
 
   const slug = toSlug(input.name);
   const [row] = await db
     .insert(schemaTemplatesTable)
     .values({
+      catalogId,
       name: input.name,
       slug,
       description: input.description ?? null,
       isSystemSeed: false,
+      isReferenceData: input.isReferenceData ?? false,
     })
     .returning();
 
@@ -260,6 +338,7 @@ export async function updateTemplate(
 ): Promise<CatalogTemplate> {
   const db = getDb();
   const template = await getTemplate(id);
+  await assertCatalogNotLocked(template.catalogId);
 
   if (input.name && input.name !== template.name) {
     if (template.isSystemSeed) {
@@ -271,10 +350,10 @@ export async function updateTemplate(
     const conflict = await db
       .select({ id: schemaTemplatesTable.id })
       .from(schemaTemplatesTable)
-      .where(eq(schemaTemplatesTable.name, input.name))
+      .where(and(eq(schemaTemplatesTable.catalogId, template.catalogId), eq(schemaTemplatesTable.name, input.name)))
       .limit(1);
     if (conflict.length > 0) {
-      throw new ServiceError("CONFLICT", `A template named "${input.name}" already exists`);
+      throw new ServiceError("CONFLICT", `A template named "${input.name}" already exists in this catalog`);
     }
   }
 
@@ -294,6 +373,7 @@ export async function updateTemplate(
 export async function deleteTemplate(id: string): Promise<void> {
   const db = getDb();
   const template = await getTemplate(id);
+  await assertCatalogNotLocked(template.catalogId);
 
   if (template.isSystemSeed) {
     throw new ServiceError("VALIDATION_ERROR", `Template "${template.name}" is a system seed and cannot be deleted`);
@@ -368,12 +448,13 @@ export async function createSection(
 ): Promise<Section> {
   const db = getDb();
   await getTemplate(templateId);
+  const catalogId = await getCatalogIdForTemplate(templateId);
+  await assertCatalogNotLocked(catalogId);
 
   const existing = await db
     .select({ id: schemaSectionsTable.id })
     .from(schemaSectionsTable)
-    .where(eq(schemaSectionsTable.templateId, templateId))
-    .where(eq(schemaSectionsTable.name, input.name))
+    .where(and(eq(schemaSectionsTable.templateId, templateId), eq(schemaSectionsTable.name, input.name)))
     .limit(1);
 
   if (existing.length > 0) {
@@ -399,13 +480,14 @@ export async function updateSection(
 ): Promise<Section> {
   const db = getDb();
   const section = await getSection(id);
+  const catalogId = await getCatalogIdForSection(id);
+  await assertCatalogNotLocked(catalogId);
 
   if (input.name && input.name !== section.name) {
     const conflict = await db
       .select({ id: schemaSectionsTable.id })
       .from(schemaSectionsTable)
-      .where(eq(schemaSectionsTable.templateId, section.templateId))
-      .where(eq(schemaSectionsTable.name, input.name))
+      .where(and(eq(schemaSectionsTable.templateId, section.templateId), eq(schemaSectionsTable.name, input.name)))
       .limit(1);
 
     if (conflict.length > 0) {
@@ -430,6 +512,8 @@ export async function updateSection(
 export async function deleteSection(id: string): Promise<void> {
   const db = getDb();
   const section = await getSection(id);
+  const catalogId = await getCatalogIdForSection(id);
+  await assertCatalogNotLocked(catalogId);
 
   if (section.attributeCount > 0) {
     throw new ServiceError(
@@ -447,6 +531,8 @@ export async function reorderSections(
 ): Promise<void> {
   const db = getDb();
   await getTemplate(templateId);
+  const catalogId = await getCatalogIdForTemplate(templateId);
+  await assertCatalogNotLocked(catalogId);
 
   await db.transaction(async (tx) => {
     for (let i = 0; i < orderedIds.length; i++) {
@@ -503,23 +589,47 @@ export async function createAttribute(
   input: CreateAttributeInput,
 ): Promise<AttributeDefinition> {
   const db = getDb();
-  await getSection(sectionId);
+  const section = await getSection(sectionId);
+  const catalogId = await getCatalogIdForSection(sectionId);
+  await assertCatalogNotLocked(catalogId);
+
+  // Look up parent template to check is_reference_data
+  const [templateRow] = await db
+    .select({ isReferenceData: schemaTemplatesTable.isReferenceData })
+    .from(schemaTemplatesTable)
+    .where(eq(schemaTemplatesTable.id, section.templateId))
+    .limit(1);
 
   assertValidAttributeType(input.attributeType);
 
-  // Validate reference_data config — dataset must exist
+  // Restrict types on reference data templates
+  if (templateRow?.isReferenceData && ["reference", "reference_data"].includes(input.attributeType)) {
+    throw new ServiceError(
+      "VALIDATION_ERROR",
+      'Reference and reference_data types are not allowed on Reference Data templates.',
+    );
+  }
+
+  // Validate reference_data config — targetTemplateId must point to is_reference_data=true template
   if (input.attributeType === "reference_data") {
-    const cfg = input.config as { referenceDatasetId?: string } | null;
-    if (!cfg?.referenceDatasetId) {
-      throw new ServiceError("VALIDATION_ERROR", `Attribute type "reference_data" requires config.referenceDatasetId`);
+    const cfg = input.config as { targetTemplateId?: string } | null;
+    if (!cfg?.targetTemplateId) {
+      throw new ServiceError("VALIDATION_ERROR", `Attribute type "reference_data" requires config.targetTemplateId`);
     }
-    const [dataset] = await getDb()
-      .select({ id: referenceDatasetsTable.id })
-      .from(referenceDatasetsTable)
-      .where(eq(referenceDatasetsTable.id, cfg.referenceDatasetId))
+    const [targetTemplate] = await db
+      .select({ id: schemaTemplatesTable.id, isReferenceData: schemaTemplatesTable.isReferenceData })
+      .from(schemaTemplatesTable)
+      .where(eq(schemaTemplatesTable.id, cfg.targetTemplateId))
       .limit(1);
-    if (!dataset) {
-      throw new ServiceError("VALIDATION_ERROR", `Reference dataset "${cfg.referenceDatasetId}" does not exist`);
+
+    if (!targetTemplate) {
+      throw new ServiceError("VALIDATION_ERROR", `Template "${cfg.targetTemplateId}" does not exist`);
+    }
+    if (!targetTemplate.isReferenceData) {
+      throw new ServiceError(
+        "VALIDATION_ERROR",
+        `Template "${cfg.targetTemplateId}" is not a Reference Data template. config.targetTemplateId must point to a template with is_reference_data=true`,
+      );
     }
   }
 
@@ -552,6 +662,8 @@ export async function updateAttribute(
 ): Promise<AttributeDefinition> {
   const db = getDb();
   const existing = await getAttribute(id);
+  const catalogId = await getCatalogIdForAttribute(id);
+  await assertCatalogNotLocked(catalogId);
 
   if (input.attributeType && input.attributeType !== existing.attributeType) {
     throw new ServiceError(
@@ -588,9 +700,9 @@ export async function updateAttribute(
 export async function deleteAttribute(id: string): Promise<void> {
   const db = getDb();
   const attr = await getAttribute(id);
+  const catalogId = await getCatalogIdForAttribute(id);
+  await assertCatalogNotLocked(catalogId);
 
-  // Check if any catalog field values reference this attribute
-  const { catalogFieldValuesTable } = await import("@workspace/db");
   const [valueRow] = await db
     .select({ id: catalogFieldValuesTable.id })
     .from(catalogFieldValuesTable)
@@ -613,6 +725,8 @@ export async function reorderAttributes(
 ): Promise<void> {
   const db = getDb();
   await getSection(sectionId);
+  const catalogId = await getCatalogIdForSection(sectionId);
+  await assertCatalogNotLocked(catalogId);
 
   await db.transaction(async (tx) => {
     for (let i = 0; i < orderedIds.length; i++) {
@@ -695,8 +809,9 @@ export async function deleteRelationship(id: string): Promise<void> {
 // Schema versioning
 // ---------------------------------------------------------------------------
 
-export async function publishSchema(): Promise<SchemaVersion> {
+export async function publishSchema(catalogId: string): Promise<SchemaVersion> {
   const db = getDb();
+  await assertCatalogNotLocked(catalogId);
 
   return await db.transaction(async (tx) => {
     const [latestVersion] = await tx
@@ -707,20 +822,33 @@ export async function publishSchema(): Promise<SchemaVersion> {
 
     const nextVersion = (latestVersion?.versionNumber ?? 0) + 1;
 
-    // Fetch all templates, sections, attributes, relationships
-    const templates = await tx.select().from(schemaTemplatesTable).orderBy(asc(schemaTemplatesTable.name));
-    const sections = await tx.select().from(schemaSectionsTable).orderBy(asc(schemaSectionsTable.displayOrder));
-    const attributes = await tx.select().from(schemaAttributesTable).orderBy(asc(schemaAttributesTable.displayOrder));
+    // Fetch catalog
+    const [catalog] = await tx
+      .select({ name: catalogsTable.name })
+      .from(catalogsTable)
+      .where(eq(catalogsTable.id, catalogId))
+      .limit(1);
+
+    if (!catalog) throw new ServiceError("NOT_FOUND", `Catalog "${catalogId}" not found`);
+
+    const templates = await tx
+      .select()
+      .from(schemaTemplatesTable)
+      .where(eq(schemaTemplatesTable.catalogId, catalogId))
+      .orderBy(asc(schemaTemplatesTable.name));
+
+    const sections = await tx
+      .select()
+      .from(schemaSectionsTable)
+      .orderBy(asc(schemaSectionsTable.displayOrder));
+
+    const attributes = await tx
+      .select()
+      .from(schemaAttributesTable)
+      .orderBy(asc(schemaAttributesTable.displayOrder));
+
     const relationships = await tx.select().from(schemaRelationshipsTable);
 
-    // Fetch all reference datasets and their values
-    const datasets = await tx.select().from(referenceDatasetsTable).orderBy(asc(referenceDatasetsTable.name));
-    const values = await tx
-      .select()
-      .from(referenceValuesTable)
-      .orderBy(asc(referenceValuesTable.displayOrder));
-
-    // Build section → attribute map
     const sectionMap = new Map<string, SnapshotSection>();
     for (const s of sections) {
       sectionMap.set(s.id, {
@@ -733,9 +861,9 @@ export async function publishSchema(): Promise<SchemaVersion> {
     }
 
     for (const a of attributes) {
-      const section = sectionMap.get(a.sectionId);
-      if (section) {
-        section.attributes.push({
+      const sec = sectionMap.get(a.sectionId);
+      if (sec) {
+        sec.attributes.push({
           id: a.id,
           name: a.name,
           slug: a.slug,
@@ -748,63 +876,44 @@ export async function publishSchema(): Promise<SchemaVersion> {
       }
     }
 
-    // Build template map
-    const templateMap = new Map<string, SnapshotTemplate>();
-    for (const t of templates) {
+    const templateIds = new Set(templates.map((t) => t.id));
+
+    const snapshotTemplates: SnapshotTemplate[] = templates.map((t) => {
       const templateSections = sections
         .filter((s) => s.templateId === t.id)
         .map((s) => sectionMap.get(s.id)!)
         .filter(Boolean);
 
-      templateMap.set(t.id, {
-        id: t.id,
-        name: t.name,
-        slug: t.slug,
-        description: t.description,
-        isSystemSeed: t.isSystemSeed,
-        sections: templateSections,
-        relationships: [],
-      });
-    }
-
-    for (const r of relationships) {
-      const fromTemplate = templateMap.get(r.fromTemplateId);
-      if (fromTemplate) {
-        fromTemplate.relationships.push({
+      const templateRelationships = relationships
+        .filter((r) => templateIds.has(r.fromTemplateId) || templateIds.has(r.toTemplateId))
+        .filter((r) => r.fromTemplateId === t.id || r.toTemplateId === t.id)
+        .map((r) => ({
           id: r.id,
           fromTemplateId: r.fromTemplateId,
           toTemplateId: r.toTemplateId,
           label: r.label,
           cardinality: r.cardinality as "1:1" | "1:N" | "M:N",
           direction: r.direction as "from" | "to" | "both",
-        });
-      }
-    }
+        }));
 
-    // Build reference datasets snapshot
-    const datasetValueMap = new Map<string, typeof values>();
-    for (const v of values) {
-      if (!datasetValueMap.has(v.datasetId)) datasetValueMap.set(v.datasetId, []);
-      datasetValueMap.get(v.datasetId)!.push(v);
-    }
-
-    const referenceDatasetsSnapshot = datasets.map((d) => ({
-      id: d.id,
-      name: d.name,
-      values: (datasetValueMap.get(d.id) ?? []).map((v) => ({
-        id: v.id,
-        label: v.label,
-        value: v.value,
-        displayOrder: v.displayOrder,
-        isActive: v.isActive,
-      })),
-    }));
+      return {
+        id: t.id,
+        name: t.name,
+        slug: t.slug,
+        description: t.description,
+        isSystemSeed: t.isSystemSeed,
+        isReferenceData: t.isReferenceData,
+        sections: templateSections,
+        relationships: templateRelationships,
+      };
+    });
 
     const snapshot: SchemaSnapshot = {
       version: nextVersion,
       publishedAt: new Date().toISOString(),
-      templates: Array.from(templateMap.values()),
-      referenceDatasetsSnapshot,
+      catalogId,
+      catalogName: catalog.name,
+      templates: snapshotTemplates,
     };
 
     await tx
@@ -812,23 +921,42 @@ export async function publishSchema(): Promise<SchemaVersion> {
       .set({ isCurrent: false })
       .where(eq(schemaVersionsTable.isCurrent, true));
 
-    const [newVersion] = await tx
+    const [version] = await tx
       .insert(schemaVersionsTable)
-      .values({ versionNumber: nextVersion, snapshot, isCurrent: true })
+      .values({
+        versionNumber: nextVersion,
+        snapshot: snapshot as unknown as Record<string, unknown>,
+        isCurrent: true,
+      })
       .returning();
 
-    return { ...newVersion, snapshot: newVersion.snapshot as SchemaSnapshot };
+    return {
+      id: version.id,
+      versionNumber: version.versionNumber,
+      snapshot,
+      publishedBy: version.publishedBy,
+      publishedAt: version.publishedAt,
+      isCurrent: version.isCurrent,
+    };
   });
 }
 
 export async function getCurrentPublishedSchema(): Promise<SchemaVersion | null> {
   const db = getDb();
-  const [row] = await db
+  const [version] = await db
     .select()
     .from(schemaVersionsTable)
     .where(eq(schemaVersionsTable.isCurrent, true))
     .limit(1);
 
-  if (!row) return null;
-  return { ...row, snapshot: row.snapshot as SchemaSnapshot };
+  if (!version) return null;
+
+  return {
+    id: version.id,
+    versionNumber: version.versionNumber,
+    snapshot: version.snapshot as unknown as SchemaSnapshot,
+    publishedBy: version.publishedBy,
+    publishedAt: version.publishedAt,
+    isCurrent: version.isCurrent,
+  };
 }

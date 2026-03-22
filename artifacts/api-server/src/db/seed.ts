@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@workspace/db";
 import {
+  catalogsTable,
   schemaTemplatesTable,
   schemaSectionsTable,
   schemaAttributesTable,
@@ -148,28 +149,43 @@ const SEED_TEMPLATES: SeedTemplate[] = [
 ];
 
 /**
- * Seeds the 5 default templates (each with a "General" section and attributes) if the database is empty.
+ * Seeds one "Demo Catalog" (Draft) with the 5 default system templates if the database is empty.
  * Idempotent — calling this on a populated database is a no-op.
  */
 export async function seedIfRequired(db: DbInstance): Promise<void> {
-  const existing = await db.select({ id: schemaTemplatesTable.id }).from(schemaTemplatesTable).limit(1);
-  if (existing.length > 0) {
-    logger.info("Seed check: templates already exist — skipping seed");
+  const existingCatalogs = await db.select({ id: catalogsTable.id }).from(catalogsTable).limit(1);
+  if (existingCatalogs.length > 0) {
+    logger.info("Seed check: catalogs already exist — skipping seed");
     return;
   }
 
-  logger.info("Seeding 5 default templates...");
+  logger.info("Seeding Demo Catalog with 5 default templates...");
 
+  // Create the demo catalog
+  const [catalog] = await db
+    .insert(catalogsTable)
+    .values({
+      name: "Demo Catalog",
+      description: "A sample data catalog to get you started",
+      status: "draft",
+    })
+    .returning();
+
+  logger.info({ catalogId: catalog.id }, "Demo Catalog created");
+
+  // Seed templates under the demo catalog
   for (const templateDef of SEED_TEMPLATES) {
     const slug = toSlug(templateDef.name);
 
     const [template] = await db
       .insert(schemaTemplatesTable)
       .values({
+        catalogId: catalog.id,
         name: templateDef.name,
         slug,
         description: templateDef.description,
         isSystemSeed: true,
+        isReferenceData: false,
       })
       .returning();
 
@@ -201,5 +217,5 @@ export async function seedIfRequired(db: DbInstance): Promise<void> {
     logger.info({ name: templateDef.name }, "Seeded template");
   }
 
-  logger.info("Seed complete: 5 templates created");
+  logger.info("Seed complete: Demo Catalog + 5 templates created");
 }

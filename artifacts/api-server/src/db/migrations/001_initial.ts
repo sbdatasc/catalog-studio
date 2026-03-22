@@ -1,13 +1,15 @@
 import type pg from "pg";
 
 /**
- * Migration 001 — Initial schema (PRD-02 Amendment v1.0).
+ * Migration 001 — Initial schema (PRD-02 Amendment v2).
  * Creates all domain tables plus the db_migrations tracking table.
  * Wrapped in a single transaction — any failure rolls back and halts startup.
  *
- * Schema hierarchy: Template → Section → Attribute (three-level)
- * Reference data: reference_datasets → reference_values
- * Catalog: catalog_entries → catalog_field_values, catalog_entry_relationships
+ * Schema hierarchy:
+ *   Catalog → Template (is_reference_data flag) → Section → Attribute
+ *   Catalog → catalog_entries → catalog_field_values, catalog_entry_relationships
+ *
+ * Note: reference_datasets / reference_values tables do NOT exist (voided in v2).
  *
  * NEVER EDIT THIS FILE once it has been applied to any database.
  * Create a new migration file (002_*.ts) for any structural changes.
@@ -17,20 +19,42 @@ export async function up(client: pg.PoolClient): Promise<void> {
     BEGIN;
 
     -- -----------------------------------------------------------------------
-    -- schema_templates (was schema_entity_types)
+    -- catalogs — top-level scoping object with lifecycle status
     -- -----------------------------------------------------------------------
-    CREATE TABLE IF NOT EXISTS schema_templates (
-      id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-      name           VARCHAR(100) NOT NULL UNIQUE,
-      slug           VARCHAR(100) NOT NULL UNIQUE,
-      description    TEXT,
-      is_system_seed BOOLEAN      NOT NULL DEFAULT false,
-      created_at     TIMESTAMPTZ  NOT NULL DEFAULT now(),
-      updated_at     TIMESTAMPTZ  NOT NULL DEFAULT now()
+    CREATE TABLE IF NOT EXISTS catalogs (
+      id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      name        VARCHAR(100) NOT NULL UNIQUE,
+      description TEXT,
+      status      VARCHAR(20)  NOT NULL DEFAULT 'draft',
+      created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      CONSTRAINT catalogs_status_check
+        CHECK (status IN ('draft', 'pilot', 'published', 'discontinued'))
     );
 
     -- -----------------------------------------------------------------------
-    -- schema_sections (NEW — Template → Section → Attribute hierarchy)
+    -- schema_templates — standard templates + reference data templates
+    -- -----------------------------------------------------------------------
+    CREATE TABLE IF NOT EXISTS schema_templates (
+      id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      catalog_id        UUID         NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
+      name              VARCHAR(100) NOT NULL,
+      slug              VARCHAR(100) NOT NULL,
+      description       TEXT,
+      is_system_seed    BOOLEAN      NOT NULL DEFAULT false,
+      is_reference_data BOOLEAN      NOT NULL DEFAULT false,
+      created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
+    );
+
+    -- Per-catalog uniqueness (names/slugs unique within a catalog, not globally)
+    CREATE UNIQUE INDEX IF NOT EXISTS schema_templates_catalog_name_unique
+      ON schema_templates(catalog_id, name);
+    CREATE UNIQUE INDEX IF NOT EXISTS schema_templates_catalog_slug_unique
+      ON schema_templates(catalog_id, slug);
+
+    -- -----------------------------------------------------------------------
+    -- schema_sections — intermediate layer; all attributes belong to a section
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS schema_sections (
       id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,8 +68,7 @@ export async function up(client: pg.PoolClient): Promise<void> {
     );
 
     -- -----------------------------------------------------------------------
-    -- schema_attributes (was schema_fields)
-    -- parent is section, not template directly; field_type → attribute_type
+    -- schema_attributes — belong to a section, not directly to a template
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS schema_attributes (
       id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -62,7 +85,7 @@ export async function up(client: pg.PoolClient): Promise<void> {
     );
 
     -- -----------------------------------------------------------------------
-    -- schema_relationships (template-to-template links)
+    -- schema_relationships — template-to-template links
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS schema_relationships (
       id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,32 +98,7 @@ export async function up(client: pg.PoolClient): Promise<void> {
     );
 
     -- -----------------------------------------------------------------------
-    -- reference_datasets (NEW — controlled vocabularies)
-    -- -----------------------------------------------------------------------
-    CREATE TABLE IF NOT EXISTS reference_datasets (
-      id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-      name        VARCHAR(100) NOT NULL UNIQUE,
-      description TEXT,
-      created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
-      updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
-    );
-
-    -- -----------------------------------------------------------------------
-    -- reference_values (NEW — values within a reference dataset)
-    -- -----------------------------------------------------------------------
-    CREATE TABLE IF NOT EXISTS reference_values (
-      id            UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-      dataset_id    UUID         NOT NULL REFERENCES reference_datasets(id) ON DELETE CASCADE,
-      label         VARCHAR(200) NOT NULL,
-      value         VARCHAR(200) NOT NULL,
-      display_order INTEGER      NOT NULL DEFAULT 0,
-      is_active     BOOLEAN      NOT NULL DEFAULT true,
-      created_at    TIMESTAMPTZ  NOT NULL DEFAULT now(),
-      CONSTRAINT reference_values_dataset_value_unique UNIQUE (dataset_id, value)
-    );
-
-    -- -----------------------------------------------------------------------
-    -- schema_versions (published schema snapshots)
+    -- schema_versions — published schema snapshots (immutable)
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS schema_versions (
       id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -112,20 +110,21 @@ export async function up(client: pg.PoolClient): Promise<void> {
     );
 
     -- -----------------------------------------------------------------------
-    -- catalog_entries (EAV root — template_id replaces entity_type_id)
+    -- catalog_entries — EAV root, scoped to a catalog
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS catalog_entries (
-      id               UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-      template_id      UUID         NOT NULL,
-      template_slug    VARCHAR(100) NOT NULL,
-      schema_version_id UUID        NOT NULL REFERENCES schema_versions(id),
-      display_name     VARCHAR(500),
-      created_at       TIMESTAMPTZ  NOT NULL DEFAULT now(),
-      updated_at       TIMESTAMPTZ  NOT NULL DEFAULT now()
+      id                UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+      catalog_id        UUID         NOT NULL REFERENCES catalogs(id) ON DELETE CASCADE,
+      template_id       UUID         NOT NULL,
+      template_slug     VARCHAR(100) NOT NULL,
+      schema_version_id UUID         NOT NULL REFERENCES schema_versions(id),
+      display_name      VARCHAR(500),
+      created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+      updated_at        TIMESTAMPTZ  NOT NULL DEFAULT now()
     );
 
     -- -----------------------------------------------------------------------
-    -- catalog_field_values (EAV values — attribute_id replaces field_id)
+    -- catalog_field_values — EAV attribute value store
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS catalog_field_values (
       id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -138,7 +137,7 @@ export async function up(client: pg.PoolClient): Promise<void> {
     );
 
     -- -----------------------------------------------------------------------
-    -- catalog_entry_relationships (entry-to-entry links)
+    -- catalog_entry_relationships — entry-to-entry relationship instances
     -- -----------------------------------------------------------------------
     CREATE TABLE IF NOT EXISTS catalog_entry_relationships (
       id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -146,7 +145,8 @@ export async function up(client: pg.PoolClient): Promise<void> {
       to_entry_id      UUID        NOT NULL REFERENCES catalog_entries(id) ON DELETE CASCADE,
       relationship_id  UUID        NOT NULL,
       created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-      CONSTRAINT catalog_entry_relationships_unique UNIQUE (from_entry_id, to_entry_id, relationship_id)
+      CONSTRAINT catalog_entry_relationships_unique
+        UNIQUE (from_entry_id, to_entry_id, relationship_id)
     );
 
     INSERT INTO db_migrations (version) VALUES (1)

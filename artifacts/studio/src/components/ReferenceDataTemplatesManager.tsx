@@ -12,13 +12,18 @@ interface Props {
   catalogId: string;
 }
 
-export function EntityTypeManager({ catalogId }: Props) {
-  const { fetchTemplates, templates, templatesLoading, templatesError } = useSchemaStore();
+export function ReferenceDataTemplatesManager({ catalogId }: Props) {
+  const {
+    fetchReferenceDataTemplates,
+    referenceDataTemplates,
+    referenceDataLoading,
+    referenceDataError,
+  } = useSchemaStore();
   const { openCreateDrawer } = useUiStore();
 
   useEffect(() => {
-    fetchTemplates(catalogId);
-  }, [catalogId, fetchTemplates]);
+    fetchReferenceDataTemplates(catalogId);
+  }, [catalogId, fetchReferenceDataTemplates]);
 
   return (
     <div className="flex-1 overflow-auto bg-background">
@@ -27,30 +32,30 @@ export function EntityTypeManager({ catalogId }: Props) {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold tracking-tight text-foreground">
-              Templates
+              Reference Data
             </h1>
             <p className="mt-2 text-muted-foreground text-base">
-              Define the shape and structure of your catalog's metadata.
+              Define controlled vocabularies and lookup tables for your catalog.
             </p>
           </div>
 
           <Button
-            onClick={() => openCreateDrawer({ isReferenceData: false })}
+            onClick={() => openCreateDrawer({ isReferenceData: true })}
             className="shadow-md shadow-primary/10 hover:-translate-y-0.5 transition-transform"
-            data-testid="button-new-template"
+            data-testid="button-new-reference-data-template"
           >
             <Plus className="w-4 h-4 mr-2" />
-            New Template
+            New Reference Data
           </Button>
         </div>
 
         <EntityTypeGrid
-          templates={templates}
-          loading={templatesLoading}
-          error={templatesError}
-          onRetry={() => fetchTemplates(catalogId)}
-          emptyMessage="Templates define the structure of the data assets in your catalog. Get started by creating your first template."
-          onCreateNew={() => openCreateDrawer({ isReferenceData: false })}
+          templates={referenceDataTemplates}
+          loading={referenceDataLoading}
+          error={referenceDataError}
+          onRetry={() => fetchReferenceDataTemplates(catalogId)}
+          emptyMessage="Reference Data templates define controlled vocabularies and lookup values used across your catalog's metadata."
+          onCreateNew={() => openCreateDrawer({ isReferenceData: true })}
         />
 
       </div>

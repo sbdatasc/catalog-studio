@@ -6,11 +6,15 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { schemaVersionsTable } from "./schemaVersions";
+import { catalogsTable } from "./catalogs";
 
 export const catalogEntriesTable = pgTable("catalog_entries", {
   id: uuid("id")
     .primaryKey()
     .default(sql`gen_random_uuid()`),
+  catalogId: uuid("catalog_id")
+    .notNull()
+    .references(() => catalogsTable.id, { onDelete: "cascade" }),
   templateId: uuid("template_id").notNull(),
   templateSlug: varchar("template_slug", { length: 100 }).notNull(),
   schemaVersionId: uuid("schema_version_id")

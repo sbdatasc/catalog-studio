@@ -11,8 +11,10 @@ const router: IRouter = Router();
 // ---------------------------------------------------------------------------
 
 const CreateTemplateBody = z.object({
+  catalogId: z.string().uuid("catalogId must be a UUID"),
   name: z.string().min(1, "Name is required").max(100, "Name must be 100 characters or fewer"),
   description: z.string().max(500, "Description must be 500 characters or fewer").nullish(),
+  isReferenceData: z.boolean().optional(),
 });
 
 const UpdateTemplateBody = z.object({
@@ -32,6 +34,8 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
       VALIDATION_ERROR: 422,
       UNPROCESSABLE: 422,
       TEMPLATE_IN_USE: 409,
+      CATALOG_LOCKED: 423,
+      CATALOG_INVALID_TRANSITION: 409,
       BAD_REQUEST: 400,
     };
     const status = statusMap[err.code] ?? 500;
@@ -42,12 +46,23 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/schema/templates
+// GET /api/schema/templates?catalogId=:id&isReferenceData=true|false
 // ---------------------------------------------------------------------------
 
-router.get("/", async (_req, res): Promise<void> => {
+router.get("/", async (req, res): Promise<void> => {
+  const catalogId = req.query.catalogId as string | undefined;
+  const isRefParam = req.query.isReferenceData as string | undefined;
+
+  if (!catalogId) {
+    sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
+    return;
+  }
+
+  const isReferenceData =
+    isRefParam === "true" ? true : isRefParam === "false" ? false : undefined;
+
   try {
-    const templates = await templateService.listTemplates();
+    const templates = await templateService.listTemplates(catalogId, isReferenceData);
     sendSuccess(res, templates);
   } catch (err) {
     handleError(res, err);
@@ -65,11 +80,25 @@ router.post("/", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const template = await templateService.createTemplate({
+    const template = await templateService.createTemplate(parsed.data.catalogId, {
       name: parsed.data.name,
       description: parsed.data.description ?? null,
+      isReferenceData: parsed.data.isReferenceData ?? false,
     });
     sendSuccess(res, template, { status: 201 });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/schema/templates/:id
+// ---------------------------------------------------------------------------
+
+router.get("/:id", async (req, res): Promise<void> => {
+  try {
+    const template = await templateService.getTemplate(req.params.id);
+    sendSuccess(res, template);
   } catch (err) {
     handleError(res, err);
   }
@@ -168,12 +197,17 @@ router.put("/:id/sections/reorder", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/schema/publish  (mounted on the router as /publish)
+// POST /api/schema/templates/publish  (catalogId in body)
 // ---------------------------------------------------------------------------
 
-router.post("/publish", async (_req, res): Promise<void> => {
+router.post("/publish", async (req, res): Promise<void> => {
+  const body = z.object({ catalogId: z.string().uuid("catalogId must be a UUID") }).safeParse(req.body);
+  if (!body.success) {
+    sendError(res, 422, "VALIDATION_ERROR", body.error.issues[0]?.message ?? "Validation failed");
+    return;
+  }
   try {
-    const version = await templateService.publishSchema();
+    const version = await templateService.publishSchema(body.data.catalogId);
     sendSuccess(res, version, { status: 201 });
   } catch (err) {
     handleError(res, err);
@@ -181,7 +215,7 @@ router.post("/publish", async (_req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/schema/current-version
+// GET /api/schema/templates/current-version
 // ---------------------------------------------------------------------------
 
 router.get("/current-version", async (_req, res): Promise<void> => {

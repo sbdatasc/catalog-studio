@@ -14,14 +14,25 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertCircle } from "lucide-react";
 
 export function DeleteConfirmModal() {
-  const { deleteModalTemplateId, closeDeleteModal } = useUiStore();
-  const { templates, removeTemplate, fetchTemplates } = useSchemaStore();
+  const { deleteModalTemplateId, closeDeleteModal, activeCatalogId } = useUiStore();
+  const {
+    templates,
+    referenceDataTemplates,
+    removeTemplate,
+    removeReferenceDataTemplate,
+    fetchTemplates,
+    fetchReferenceDataTemplates,
+  } = useSchemaStore();
   const { toast } = useToast();
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorState, setErrorState] = useState<"NONE" | "IN_USE" | "NOT_FOUND" | "UNKNOWN">("NONE");
 
-  const template = templates.find((t) => t.id === deleteModalTemplateId);
+  const template =
+    templates.find((t) => t.id === deleteModalTemplateId) ??
+    referenceDataTemplates.find((t) => t.id === deleteModalTemplateId) ??
+    null;
+
   const isOpen = !!deleteModalTemplateId && !!template;
 
   const handleOpenChange = (open: boolean) => {
@@ -52,18 +63,22 @@ export function DeleteConfirmModal() {
       return;
     }
 
-    removeTemplate(template.id);
+    if (template.isReferenceData) {
+      removeReferenceDataTemplate(template.id);
+    } else {
+      removeTemplate(template.id);
+    }
     closeDeleteModal();
     setTimeout(() => setErrorState("NONE"), 300);
-    toast({
-      title: "Success",
-      description: "Template deleted",
-    });
+    toast({ title: "Success", description: "Template deleted" });
   };
 
   const handleCloseAndRefresh = () => {
     closeDeleteModal();
-    fetchTemplates();
+    if (activeCatalogId) {
+      fetchTemplates(activeCatalogId);
+      fetchReferenceDataTemplates(activeCatalogId);
+    }
     setTimeout(() => setErrorState("NONE"), 300);
   };
 

@@ -16,11 +16,19 @@ export function EntityTypeCard({ template }: Props) {
       data-testid={`card-template-${template.id}`}
     >
       <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="font-display font-semibold text-foreground text-lg truncate">
             {template.name}
           </h3>
-          {template.isSystemSeed && (
+          {template.isReferenceData && (
+            <Badge
+              variant="secondary"
+              className="font-normal text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400 pointer-events-none"
+            >
+              Reference Data
+            </Badge>
+          )}
+          {template.isSystemSeed && !template.isReferenceData && (
             <Badge
               variant="secondary"
               className="font-normal text-xs bg-muted text-muted-foreground pointer-events-none"
@@ -30,7 +38,7 @@ export function EntityTypeCard({ template }: Props) {
           )}
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
           <button
             onClick={() => openEditDrawer(template.id)}
             className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"

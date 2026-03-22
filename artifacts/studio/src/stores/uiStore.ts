@@ -1,17 +1,25 @@
 import { create } from "zustand";
+import type { CatalogStatus } from "@/lib/apiClient";
 
 interface UiStore {
+  // Active catalog context (set by DesignerPage on mount)
+  activeCatalogId: string | null;
+  activeCatalogStatus: CatalogStatus | null;
+  setActiveCatalog: (id: string, status: CatalogStatus) => void;
+  clearActiveCatalog: () => void;
+
   // Drawer
   drawerMode: "closed" | "create" | "edit";
   drawerTemplateId: string | null;
   drawerIsDirty: boolean;
+  drawerIsReferenceData: boolean;
 
   // Guard Modal State
   guardAction: (() => void) | null;
 
   // Actions
   setDrawerIsDirty: (isDirty: boolean) => void;
-  openCreateDrawer: () => void;
+  openCreateDrawer: (opts?: { isReferenceData?: boolean }) => void;
   openEditDrawer: (id: string) => void;
   requestCloseDrawer: () => void;
   closeDrawer: () => void;
@@ -27,22 +35,35 @@ interface UiStore {
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
+  activeCatalogId: null,
+  activeCatalogStatus: null,
+  setActiveCatalog: (id, status) => set({ activeCatalogId: id, activeCatalogStatus: status }),
+  clearActiveCatalog: () => set({ activeCatalogId: null, activeCatalogStatus: null }),
+
   drawerMode: "closed",
   drawerTemplateId: null,
   drawerIsDirty: false,
+  drawerIsReferenceData: false,
   guardAction: null,
 
   setDrawerIsDirty: (isDirty) => set({ drawerIsDirty: isDirty }),
 
-  openCreateDrawer: () => {
+  openCreateDrawer: (opts = {}) => {
     const { drawerIsDirty } = get();
+    const isRef = opts.isReferenceData ?? false;
     if (drawerIsDirty) {
       set({
         guardAction: () =>
-          set({ drawerMode: "create", drawerTemplateId: null, drawerIsDirty: false, guardAction: null }),
+          set({
+            drawerMode: "create",
+            drawerTemplateId: null,
+            drawerIsDirty: false,
+            drawerIsReferenceData: isRef,
+            guardAction: null,
+          }),
       });
     } else {
-      set({ drawerMode: "create", drawerTemplateId: null, drawerIsDirty: false });
+      set({ drawerMode: "create", drawerTemplateId: null, drawerIsDirty: false, drawerIsReferenceData: isRef });
     }
   },
 

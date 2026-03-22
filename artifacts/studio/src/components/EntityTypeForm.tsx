@@ -11,17 +11,36 @@ import { Loader2, AlertCircle } from "lucide-react";
 import { DrawerShell } from "./DrawerShell";
 
 export function EntityTypeDrawer() {
-  const { drawerMode, drawerTemplateId, setDrawerIsDirty, requestCloseDrawer } = useUiStore();
-  const { templates, addTemplate, updateTemplate, fetchTemplates } = useSchemaStore();
+  const {
+    drawerMode,
+    drawerTemplateId,
+    drawerIsReferenceData,
+    activeCatalogId,
+    setDrawerIsDirty,
+    requestCloseDrawer,
+  } = useUiStore();
+
+  const {
+    templates,
+    referenceDataTemplates,
+    addTemplate,
+    updateTemplate,
+    addReferenceDataTemplate,
+    updateReferenceDataTemplate,
+    fetchTemplates,
+    fetchReferenceDataTemplates,
+  } = useSchemaStore();
+
   const { toast } = useToast();
 
   const isOpen = drawerMode !== "closed";
+
+  const allTemplates = drawerIsReferenceData ? referenceDataTemplates : templates;
   const template: CatalogTemplate | null =
-    drawerMode === "edit" ? (templates.find((t) => t.id === drawerTemplateId) ?? null) : null;
+    drawerMode === "edit" ? (allTemplates.find((t) => t.id === drawerTemplateId) ?? null) : null;
 
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inlineError, setInlineError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
@@ -54,25 +73,34 @@ export function EntityTypeDrawer() {
       return;
     }
 
+    if (!activeCatalogId) {
+      setBannerError("No active catalog. Please navigate back and try again.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     if (drawerMode === "create") {
       const { data, error } = await apiClient.schema.createTemplate({
+        catalogId: activeCatalogId,
         name: trimmedName,
         description: description.trim() || null,
+        isReferenceData: drawerIsReferenceData,
       });
 
       setIsSubmitting(false);
 
       if (error) {
         if (error.code === "CONFLICT") setInlineError("A template with this name already exists.");
-        else if (error.code === "VALIDATION_ERROR") setInlineError("Name is required.");
+        else if (error.code === "CATALOG_LOCKED")
+          setBannerError("This catalog is locked and cannot be modified.");
+        else if (error.code === "VALIDATION_ERROR") setInlineError(error.message);
         else setBannerError("Something went wrong. Please try again.");
         return;
       }
 
       if (data) {
-        addTemplate(data);
+        drawerIsReferenceData ? addReferenceDataTemplate(data) : addTemplate(data);
         useUiStore.getState().closeDrawer();
         toast({ title: "Success", description: "Template created" });
       }
@@ -86,6 +114,8 @@ export function EntityTypeDrawer() {
 
       if (error) {
         if (error.code === "CONFLICT") setInlineError("A template with this name already exists.");
+        else if (error.code === "CATALOG_LOCKED")
+          setBannerError("This catalog is locked and cannot be modified.");
         else if (error.code === "NOT_FOUND")
           setBannerError("This template no longer exists. It may have been deleted.");
         else setBannerError("Something went wrong. Please try again.");
@@ -93,14 +123,25 @@ export function EntityTypeDrawer() {
       }
 
       if (data) {
-        updateTemplate(data);
+        data.isReferenceData ? updateReferenceDataTemplate(data) : updateTemplate(data);
         useUiStore.getState().closeDrawer();
         toast({ title: "Success", description: "Template saved" });
       }
     }
   };
 
+  const handleCloseAndRefresh = () => {
+    useUiStore.getState().closeDrawer();
+    if (activeCatalogId) {
+      drawerIsReferenceData
+        ? fetchReferenceDataTemplates(activeCatalogId)
+        : fetchTemplates(activeCatalogId);
+    }
+  };
+
   const isSeedNameReadonly = drawerMode === "edit" && template?.isSystemSeed;
+
+  const label = drawerIsReferenceData ? "Reference Data" : "Template";
 
   const footer = (
     <>
@@ -118,7 +159,7 @@ export function EntityTypeDrawer() {
         data-testid="button-save-template"
       >
         {isSubmitting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-        {drawerMode === "create" ? "Create Template" : "Save Changes"}
+        {drawerMode === "create" ? `Create ${label}` : "Save Changes"}
       </Button>
     </>
   );
@@ -126,7 +167,7 @@ export function EntityTypeDrawer() {
   return (
     <DrawerShell
       isOpen={isOpen}
-      title={drawerMode === "create" ? "New Template" : "Edit Template"}
+      title={drawerMode === "create" ? `New ${label}` : `Edit ${label}`}
       footer={footer}
     >
       <div className="space-y-6">
@@ -139,10 +180,7 @@ export function EntityTypeDrawer() {
                 <Button
                   variant="link"
                   className="h-auto p-0 text-destructive font-semibold mt-1"
-                  onClick={() => {
-                    useUiStore.getState().closeDrawer();
-                    fetchTemplates();
-                  }}
+                  onClick={handleCloseAndRefresh}
                 >
                   Close & Refresh
                 </Button>
@@ -159,7 +197,7 @@ export function EntityTypeDrawer() {
             id="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Data Contract"
+            placeholder={drawerIsReferenceData ? "e.g. Status Codes" : "e.g. Data Contract"}
             maxLength={100}
             readOnly={isSeedNameReadonly}
             className={inlineError ? "border-destructive focus-visible:ring-destructive/20" : ""}
