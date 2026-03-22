@@ -19,6 +19,7 @@ export const AppErrorCode = {
   UNPROCESSABLE: "UNPROCESSABLE",
   INTERNAL_ERROR: "INTERNAL_ERROR",
   VALIDATION_ERROR: "VALIDATION_ERROR",
+  ENTITY_TYPE_IN_USE: "ENTITY_TYPE_IN_USE",
 } as const;
 
 /**
@@ -46,6 +47,69 @@ export interface AppError {
  */
 export interface ApiResponseMeta {
   [key: string]: unknown;
+}
+
+/**
+ * A catalog entity type definition
+ */
+export interface EntityType {
+  id: string;
+  name: string;
+  slug: string;
+  /** @nullable */
+  description?: string | null;
+  isSystemSeed: boolean;
+  fieldCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEntityTypeInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * @maxLength 500
+   * @nullable
+   */
+  description?: string | null;
+}
+
+export interface UpdateEntityTypeInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name?: string;
+  /**
+   * @maxLength 500
+   * @nullable
+   */
+  description?: string | null;
+}
+
+export interface DeleteEntityTypeResult {
+  deleted: boolean;
+}
+
+export interface EntityTypeApiResponse {
+  data: EntityType | null;
+  error: AppError | null;
+  meta?: ApiResponseMeta | null;
+}
+
+export interface EntityTypeListApiResponse {
+  data: EntityType[] | null;
+  error: AppError | null;
+  meta?: ApiResponseMeta | null;
+}
+
+export interface DeleteEntityTypeApiResponse {
+  data: DeleteEntityTypeResult | null;
+  error: AppError | null;
+  meta?: ApiResponseMeta | null;
 }
 
 export interface HealthStatus {

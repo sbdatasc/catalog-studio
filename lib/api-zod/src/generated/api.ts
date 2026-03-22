@@ -8,6 +8,196 @@
 import * as zod from "zod";
 
 /**
+ * @summary List all entity types
+ */
+export const ListEntityTypesResponse = zod.object({
+  data: zod.union([
+    zod.array(
+      zod
+        .object({
+          id: zod.string().uuid(),
+          name: zod.string(),
+          slug: zod.string(),
+          description: zod.string().nullish(),
+          isSystemSeed: zod.boolean(),
+          fieldCount: zod.number(),
+          createdAt: zod.date(),
+          updatedAt: zod.date(),
+        })
+        .describe("A catalog entity type definition"),
+    ),
+    zod.null(),
+  ]),
+  error: zod.union([
+    zod
+      .object({
+        code: zod
+          .enum([
+            "BAD_REQUEST",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "CONFLICT",
+            "UNPROCESSABLE",
+            "INTERNAL_ERROR",
+            "VALIDATION_ERROR",
+            "ENTITY_TYPE_IN_USE",
+          ])
+          .describe("Typed error codes for all application errors"),
+        message: zod.string().describe("Human-readable error message"),
+        details: zod
+          .record(zod.string(), zod.unknown())
+          .nullish()
+          .describe("Optional additional error context (field errors, etc.)"),
+      })
+      .describe("Structured error object included in error responses"),
+    zod.null(),
+  ]),
+  meta: zod
+    .union([
+      zod
+        .record(zod.string(), zod.unknown())
+        .describe(
+          "Optional metadata attached to responses (pagination, timing, etc.)",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
+ * @summary Create a new entity type
+ */
+export const createEntityTypeBodyNameMax = 100;
+
+export const createEntityTypeBodyDescriptionMax = 500;
+
+export const CreateEntityTypeBody = zod.object({
+  name: zod.string().min(1).max(createEntityTypeBodyNameMax),
+  description: zod.string().max(createEntityTypeBodyDescriptionMax).nullish(),
+});
+
+/**
+ * @summary Update an entity type
+ */
+export const UpdateEntityTypeParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const updateEntityTypeBodyNameMax = 100;
+
+export const updateEntityTypeBodyDescriptionMax = 500;
+
+export const UpdateEntityTypeBody = zod.object({
+  name: zod.string().min(1).max(updateEntityTypeBodyNameMax).optional(),
+  description: zod.string().max(updateEntityTypeBodyDescriptionMax).nullish(),
+});
+
+export const UpdateEntityTypeResponse = zod.object({
+  data: zod.union([
+    zod
+      .object({
+        id: zod.string().uuid(),
+        name: zod.string(),
+        slug: zod.string(),
+        description: zod.string().nullish(),
+        isSystemSeed: zod.boolean(),
+        fieldCount: zod.number(),
+        createdAt: zod.date(),
+        updatedAt: zod.date(),
+      })
+      .describe("A catalog entity type definition"),
+    zod.null(),
+  ]),
+  error: zod.union([
+    zod
+      .object({
+        code: zod
+          .enum([
+            "BAD_REQUEST",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "CONFLICT",
+            "UNPROCESSABLE",
+            "INTERNAL_ERROR",
+            "VALIDATION_ERROR",
+            "ENTITY_TYPE_IN_USE",
+          ])
+          .describe("Typed error codes for all application errors"),
+        message: zod.string().describe("Human-readable error message"),
+        details: zod
+          .record(zod.string(), zod.unknown())
+          .nullish()
+          .describe("Optional additional error context (field errors, etc.)"),
+      })
+      .describe("Structured error object included in error responses"),
+    zod.null(),
+  ]),
+  meta: zod
+    .union([
+      zod
+        .record(zod.string(), zod.unknown())
+        .describe(
+          "Optional metadata attached to responses (pagination, timing, etc.)",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
+ * @summary Delete an entity type
+ */
+export const DeleteEntityTypeParams = zod.object({
+  id: zod.coerce.string().uuid(),
+});
+
+export const DeleteEntityTypeResponse = zod.object({
+  data: zod.union([
+    zod.object({
+      deleted: zod.boolean(),
+    }),
+    zod.null(),
+  ]),
+  error: zod.union([
+    zod
+      .object({
+        code: zod
+          .enum([
+            "BAD_REQUEST",
+            "UNAUTHORIZED",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "CONFLICT",
+            "UNPROCESSABLE",
+            "INTERNAL_ERROR",
+            "VALIDATION_ERROR",
+            "ENTITY_TYPE_IN_USE",
+          ])
+          .describe("Typed error codes for all application errors"),
+        message: zod.string().describe("Human-readable error message"),
+        details: zod
+          .record(zod.string(), zod.unknown())
+          .nullish()
+          .describe("Optional additional error context (field errors, etc.)"),
+      })
+      .describe("Structured error object included in error responses"),
+    zod.null(),
+  ]),
+  meta: zod
+    .union([
+      zod
+        .record(zod.string(), zod.unknown())
+        .describe(
+          "Optional metadata attached to responses (pagination, timing, etc.)",
+        ),
+      zod.null(),
+    ])
+    .optional(),
+});
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -32,6 +222,7 @@ export const HealthCheckResponse = zod
               "UNPROCESSABLE",
               "INTERNAL_ERROR",
               "VALIDATION_ERROR",
+              "ENTITY_TYPE_IN_USE",
             ])
             .describe("Typed error codes for all application errors"),
           message: zod.string().describe("Human-readable error message"),

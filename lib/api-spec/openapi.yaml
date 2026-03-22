@@ -10,7 +10,123 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: schema
+    description: Schema management — entity types, fields, relationships
 paths:
+  /schema/entity-types:
+    get:
+      operationId: listEntityTypes
+      tags: [schema]
+      summary: List all entity types
+      responses:
+        "200":
+          description: Entity type list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityTypeListApiResponse"
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+    post:
+      operationId: createEntityType
+      tags: [schema]
+      summary: Create a new entity type
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEntityTypeInput"
+      responses:
+        "201":
+          description: Entity type created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityTypeApiResponse"
+        "409":
+          description: Duplicate name conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+  /schema/entity-types/{id}:
+    patch:
+      operationId: updateEntityType
+      tags: [schema]
+      summary: Update an entity type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateEntityTypeInput"
+      responses:
+        "200":
+          description: Entity type updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EntityTypeApiResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+        "409":
+          description: Duplicate name conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+    delete:
+      operationId: deleteEntityType
+      tags: [schema]
+      summary: Delete an entity type
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Entity type deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteEntityTypeApiResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
+        "409":
+          description: Entity type has entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
   /healthz:
     get:
       operationId: healthCheck
@@ -43,6 +159,7 @@ components:
         - UNPROCESSABLE
         - INTERNAL_ERROR
         - VALIDATION_ERROR
+        - ENTITY_TYPE_IN_USE
       description: Typed error codes for all application errors
 
     AppError:
@@ -72,6 +189,129 @@ components:
     # Because OpenAPI 3.1 does not support true generics, define a concrete envelope schema
     # per endpoint (e.g. NoteApiResponse, CatalogApiResponse) following the same structure.
     # See HealthCheckApiResponse below as the canonical example.
+
+    EntityType:
+      type: object
+      description: A catalog entity type definition
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        isSystemSeed:
+          type: boolean
+        fieldCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - slug
+        - isSystemSeed
+        - fieldCount
+        - createdAt
+        - updatedAt
+
+    CreateEntityTypeInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: ["string", "null"]
+          maxLength: 500
+      required:
+        - name
+
+    UpdateEntityTypeInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: ["string", "null"]
+          maxLength: 500
+
+    DeleteEntityTypeResult:
+      type: object
+      properties:
+        deleted:
+          type: boolean
+      required:
+        - deleted
+
+    EntityTypeApiResponse:
+      type: object
+      properties:
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/EntityType"
+            - type: "null"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/AppError"
+            - type: "null"
+        meta:
+          oneOf:
+            - $ref: "#/components/schemas/ApiResponseMeta"
+            - type: "null"
+      required:
+        - data
+        - error
+
+    EntityTypeListApiResponse:
+      type: object
+      properties:
+        data:
+          oneOf:
+            - type: array
+              items:
+                $ref: "#/components/schemas/EntityType"
+            - type: "null"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/AppError"
+            - type: "null"
+        meta:
+          oneOf:
+            - $ref: "#/components/schemas/ApiResponseMeta"
+            - type: "null"
+      required:
+        - data
+        - error
+
+    DeleteEntityTypeApiResponse:
+      type: object
+      properties:
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/DeleteEntityTypeResult"
+            - type: "null"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/AppError"
+            - type: "null"
+        meta:
+          oneOf:
+            - $ref: "#/components/schemas/ApiResponseMeta"
+            - type: "null"
+      required:
+        - data
+        - error
 
     HealthStatus:
       type: object

@@ -21,7 +21,8 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 ```text
 artifacts-monorepo/
 ├── artifacts/              # Deployable applications
-│   └── api-server/         # Express API server
+│   ├── api-server/         # Express API server
+│   └── studio/             # React + Vite frontend (Data Catalog Studio)
 ├── lib/                    # Shared libraries
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
@@ -68,6 +69,27 @@ Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` 
 - **Helpers**: `src/lib/response.ts` (`sendSuccess`/`sendError`), `src/lib/errors.ts` (`ServiceError`), `src/lib/utils.ts` (`toSlug`)
 - Depends on: `@workspace/db`, `@workspace/api-zod`, `pg`, `drizzle-orm`
 
+### `artifacts/studio` (`@workspace/studio`)
+
+React + Vite frontend for the Data Catalog Studio. Served at previewPath `/` on port 18425.
+
+- **Entry**: `src/main.tsx` → `src/App.tsx`
+- **API client**: `src/lib/apiClient.ts` — custom fetch wrapper (no generated hooks), `apiClient.schema.*` namespace for entity type CRUD
+- **State management** (Zustand):
+  - `src/stores/schemaStore.ts` — `entityTypes[]`, `entityTypesLoading`, `entityTypesError`, `fetchEntityTypes`, `addEntityType`, `updateEntityType`, `removeEntityType`. Store mutations happen ONLY after successful API responses (never optimistic).
+  - `src/stores/uiStore.ts` — `drawerMode` (closed/create/edit), `drawerEntityTypeId`, `drawerIsDirty`, `guardAction`, `deleteModalEntityTypeId`; provides `requestCloseDrawer()` (dirty-aware), `closeDrawer()` (force), `confirmDiscard()`, `cancelDiscard()`
+- **Pages**: `src/pages/DesignerPage.tsx` — single-page Designer Mode view
+- **Components**:
+  - `DrawerShell.tsx` — shadcn Sheet wrapper with ESC + backdrop guard
+  - `EntityTypeForm.tsx` — exports `EntityTypeDrawer` (combined form + drawer logic for create/edit)
+  - `EntityTypeCard.tsx` — card with hover-reveal edit/delete icons, System badge for seeds
+  - `EntityTypeGrid.tsx` — loading skeletons, error/empty states, responsive card grid
+  - `EntityTypeManager.tsx` — page-level container, fetches on mount
+  - `DeleteConfirmModal.tsx` — handles `ENTITY_TYPE_IN_USE` and `NOT_FOUND` error states
+  - `UnsavedChangesGuard.tsx` — modal triggered by `uiStore.guardAction`
+  - `DesignerNav.tsx` — top navigation bar
+- **API routes mounted**: `GET/POST/PATCH/DELETE /api/schema/entity-types` (in api-server's `src/routes/schema/entityTypes.ts`)
+
 ### `lib/db` (`@workspace/db`)
 
 Schema definitions and shared types for Drizzle ORM. **Does NOT create a database connection** — the api-server's `connection.ts` is the single source of truth for the pool.
@@ -111,7 +133,7 @@ All API responses use a typed envelope:
 ```
 
 **AppErrorCode** — defined in `lib/api-spec/openapi.yaml` and generated into both `@workspace/api-zod` and `@workspace/api-client-react`:
-- `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `UNPROCESSABLE`, `INTERNAL_ERROR`, `VALIDATION_ERROR`
+- `BAD_REQUEST`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`, `UNPROCESSABLE`, `INTERNAL_ERROR`, `VALIDATION_ERROR`, `ENTITY_TYPE_IN_USE`
 
 **Server helpers** — use `sendSuccess` and `sendError` from `artifacts/api-server/src/lib/response.ts` in all route handlers. Never construct the envelope manually in a route.
 

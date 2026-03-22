@@ -71,6 +71,7 @@ export interface CreateEntityTypeInput {
 }
 
 export interface UpdateEntityTypeInput {
+  name?: string;
   description?: string | null;
 }
 
@@ -214,10 +215,38 @@ export async function updateEntityType(
   const db = getDb();
   const entity = await getEntityType(id);
 
+  // System seeds cannot have their name changed
+  if (input.name && input.name !== entity.name) {
+    if (entity.isSystemSeed) {
+      throw new ServiceError(
+        "VALIDATION_ERROR",
+        `Entity type "${entity.name}" is a system seed — its name cannot be changed`,
+      );
+    }
+    // Check for name conflict
+    const conflict = await db
+      .select({ id: schemaEntityTypesTable.id })
+      .from(schemaEntityTypesTable)
+      .where(eq(schemaEntityTypesTable.name, input.name))
+      .limit(1);
+    if (conflict.length > 0) {
+      throw new ServiceError(
+        "CONFLICT",
+        `An entity type named "${input.name}" already exists`,
+      );
+    }
+  }
+
+  const newName = input.name ?? entity.name;
+  const newSlug = input.name ? toSlug(input.name) : entity.slug;
+  const newDescription = input.description !== undefined ? input.description : entity.description;
+
   const [updated] = await db
     .update(schemaEntityTypesTable)
     .set({
-      description: input.description ?? entity.description,
+      name: newName,
+      slug: newSlug,
+      description: newDescription,
       updatedAt: new Date(),
     })
     .where(eq(schemaEntityTypesTable.id, id))
@@ -246,8 +275,8 @@ export async function deleteEntityType(id: string): Promise<void> {
 
   if (entries.length > 0) {
     throw new ServiceError(
-      "CONFLICT",
-      `Entity type "${entity.name}" has catalog entries and cannot be deleted`,
+      "ENTITY_TYPE_IN_USE",
+      `Entity type "${entity.name}" has catalog entries and cannot be deleted. Remove all entries first.`,
     );
   }
 

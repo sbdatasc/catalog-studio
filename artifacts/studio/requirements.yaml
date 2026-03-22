@@ -1,0 +1,16 @@
+packages:
+  "zustand": "State management for schemaStore and uiStore as specified in PRD"
+  "lucide-react": "Icons for UI (Pencil, Trash, etc.)"
+  "date-fns": "For formatting dates if needed"
+  "clsx": "Utility for constructing className strings conditionally"
+  "tailwind-merge": "Utility for merging tailwind classes"
+
+images:
+  - path: "artifacts/studio/public/images/logo-mark.png"
+    description: "Minimalist geometric data catalog logo mark, dark slate blue, clean corporate style, transparent background"
+    aspect_ratio: "1:1"
+
+notes:
+  - Using standard Shadcn UI components available in the workspace
+  - Built custom fetch apiClient per PRD requirements instead of React Query
+  - Implemented UnsavedChangesGuard carefully intercepting ESC and backdrop clicks
