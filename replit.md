@@ -26,7 +26,7 @@ artifacts-monorepo/
 │   ├── api-spec/           # OpenAPI spec + Orval codegen config
 │   ├── api-client-react/   # Generated React Query hooks
 │   ├── api-zod/            # Generated Zod schemas from OpenAPI
-│   └── db/                 # Drizzle ORM schema + DB connection
+│   └── db/                 # Drizzle ORM schema definitions + shared types (no DB connection)
 ├── scripts/                # Utility scripts (single workspace package)
 │   └── src/                # Individual .ts scripts, run via `pnpm --filter @workspace/scripts run <script>`
 ├── pnpm-workspace.yaml     # pnpm workspace (artifacts/*, lib/*, lib/integrations/*, scripts)
@@ -42,6 +42,7 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 - **Always typecheck from the root** — run `pnpm run typecheck` (which runs `tsc --build --emitDeclarationOnly`). This builds the full dependency graph so that cross-package imports resolve correctly. Running `tsc` inside a single package will fail if its dependencies haven't been built yet.
 - **`emitDeclarationOnly`** — we only emit `.d.ts` files during typecheck; actual JS bundling is handled by esbuild/tsx/vite...etc, not `tsc`.
 - **Project references** — when package A depends on package B, A's `tsconfig.json` must list B in its `references` array. `tsc --build` uses this to determine build order and skip up-to-date packages.
+- **Build lib/db first** — run `pnpm --filter @workspace/db run build` when schema files change, before running typecheck in api-server.
 
 ## Root Scripts
 
@@ -52,27 +53,37 @@ Every package extends `tsconfig.base.json` which sets `composite: true`. The roo
 
 ### `artifacts/api-server` (`@workspace/api-server`)
 
-Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for persistence.
+Express 5 API server. Routes live in `src/routes/` and use `@workspace/api-zod` for request and response validation and `@workspace/db` for schema definitions.
 
-- Entry: `src/index.ts` — reads `PORT`, starts Express
+- Entry: `src/index.ts` — reads `PORT`, calls `openDatabase()`, starts Express
 - App setup: `src/app.ts` — mounts CORS, JSON/urlencoded parsing, routes at `/api`
-- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /health` (full path: `/api/health`)
-- Depends on: `@workspace/db`, `@workspace/api-zod`
-- `pnpm --filter @workspace/api-server run dev` — run the dev server
-- `pnpm --filter @workspace/api-server run build` — production esbuild bundle (`dist/index.cjs`)
-- Build bundles an allowlist of deps (express, cors, pg, drizzle-orm, zod, etc.) and externalizes the rest
+- Routes: `src/routes/index.ts` mounts sub-routers; `src/routes/health.ts` exposes `GET /healthz` (full path: `/api/healthz`)
+- **DB connection**: `src/db/connection.ts` — lazy singleton `getDb()`, `openDatabase()`, `closeDatabase()`
+- **Migrations**: `src/db/migrate.ts` — forward-only runner; `src/db/migrations/001_initial.ts` — all 7 tables + tracking table
+- **Seed**: `src/db/seed.ts` — 5 default entity types (Data Asset, Pipeline, Glossary Term, Person/Team, System/Source), idempotent
+- **Services**: `src/services/` — business logic layer:
+  - `coercionService.ts` — `toStorageString`, `fromStorageString`, `validateFieldValue` for all 7 field types
+  - `schemaService.ts` — 14 functions for CRUD on entity types, fields, relationships, and schema publishing
+  - `entryService.ts` — 8 functions for CRUD on catalog entries with EAV coercion, plus link/unlink
+- **Helpers**: `src/lib/response.ts` (`sendSuccess`/`sendError`), `src/lib/errors.ts` (`ServiceError`), `src/lib/utils.ts` (`toSlug`)
+- Depends on: `@workspace/db`, `@workspace/api-zod`, `pg`, `drizzle-orm`
 
 ### `lib/db` (`@workspace/db`)
 
-Database layer using Drizzle ORM with PostgreSQL. Exports a Drizzle client instance and schema models.
+Schema definitions and shared types for Drizzle ORM. **Does NOT create a database connection** — the api-server's `connection.ts` is the single source of truth for the pool.
 
-- `src/index.ts` — creates a `Pool` + Drizzle instance, exports schema
-- `src/schema/index.ts` — barrel re-export of all models
-- `src/schema/<modelname>.ts` — table definitions with `drizzle-zod` insert schemas (no models definitions exist right now)
+- `src/index.ts` — barrel re-export of schema + types (no pool, no drizzle instance)
+- `src/schema/` — 7 Drizzle table definitions:
+  - `schemaEntityTypes.ts` — entity type definitions
+  - `schemaFields.ts` — field definitions with FieldType + config JSONB
+  - `schemaRelationships.ts` — entity type relationships
+  - `schemaVersions.ts` — published schema snapshots
+  - `catalogEntries.ts` — EAV catalog entries
+  - `catalogFieldValues.ts` — EAV field values (stored as TEXT)
+  - `catalogEntryRelationships.ts` — entry-to-entry links
+- `src/types.ts` — `FieldType` enum, `FieldConfigSchema` (Zod), `SchemaSnapshot`, `SnapshotEntityType`, `SnapshotField`, `SnapshotRelationship`
 - `drizzle.config.ts` — Drizzle Kit config (requires `DATABASE_URL`, automatically provided by Replit)
-- Exports: `.` (pool, db, schema), `./schema` (schema only)
-
-Production migrations are handled by Replit when publishing. In development, we just use `pnpm --filter @workspace/db run push`, and we fallback to `pnpm --filter @workspace/db run push-force`.
+- `pnpm --filter @workspace/db run build` — compiles declaration files (required before api-server typecheck)
 
 ### `lib/api-spec` (`@workspace/api-spec`)
 
@@ -113,6 +124,20 @@ sendSuccess(res, data);
 // Error:
 sendError(res, 404, "NOT_FOUND", "Resource not found");
 ```
+
+**ServiceError** — services throw `new ServiceError(code, message)` from `src/lib/errors.ts`. Route handlers catch it and call `sendError`.
+
+## Database Architecture (PRD-02)
+
+### Rules
+
+1. **DB singleton**: Only `artifacts/api-server/src/db/connection.ts` creates the Pool. All services call `getDb()` — never pass db as a parameter, never instantiate Drizzle outside this file.
+2. **Migration rule**: NEVER edit `001_initial.ts` once applied. New structural changes require `002_*.ts`.
+3. **Field type rule**: `updateField()` throws `VALIDATION_ERROR` if `fieldType` is changed after creation.
+4. **EAV pattern**: All field values stored as TEXT in `catalog_field_values.value_text`. Coercion to correct JS types done at read time via `coercionService`.
+5. **Seed rule**: Entity types with `is_system_seed = true` cannot be deleted. `deleteEntityType()` throws `VALIDATION_ERROR` for these.
+6. **entryService schema rule**: `entryService` reads entity type definitions ONLY from the `schema_versions` snapshot (via `getCurrentPublishedSchema()`), never directly from `schema_entity_types`, `schema_fields`, or `schema_relationships`.
+7. **Schema publish**: `schemaService.publishSchema()` builds a full `SchemaSnapshot` JSON, increments `version_number`, sets `is_current=false` on previous, wraps in a transaction.
 
 ### `scripts` (`@workspace/scripts`)
 

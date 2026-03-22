@@ -1,16 +1,5 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
-import * as schema from "./schema";
-
-const { Pool } = pg;
-
-if (!process.env.DATABASE_URL) {
-  throw new Error(
-    "DATABASE_URL must be set. Did you forget to provision a database?",
-  );
-}
-
-export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-export const db = drizzle(pool, { schema });
-
+// Schema table definitions and shared types.
+// The database connection is NOT created here — it is the api-server's responsibility
+// to open a single connection via openDatabase() in artifacts/api-server/src/db/connection.ts.
 export * from "./schema";
+export * from "./types";
