@@ -1,4 +1,4 @@
-import type { AttributeType, SnapshotAttribute, SchemaSnapshot } from "@workspace/db";
+import type { AttributeType, SnapshotAttribute } from "@workspace/db";
 
 export interface ValidationResult {
   valid: boolean;
@@ -72,13 +72,15 @@ export function fromStorageString(
 }
 
 /**
- * Validates an attribute value against its attribute definition and the published schema.
+ * Validates an attribute value against its attribute definition.
  * Returns { valid: true } on success, or { valid: false, error: "..." } on failure.
+ *
+ * Note: reference and reference_data types only validate format here.
+ * DB-level existence checks happen in entryService.
  */
 export function validateAttributeValue(
   value: unknown,
   attribute: SnapshotAttribute,
-  publishedSchema: SchemaSnapshot,
 ): ValidationResult {
   // Null check for required attributes
   if (value === null || value === undefined || value === "") {
@@ -149,35 +151,10 @@ export function validateAttributeValue(
       return { valid: true };
     }
 
-    case "reference": {
-      if (typeof value !== "string" || !/^[0-9a-f-]{36}$/.test(value)) {
-        return { valid: false, error: `Attribute "${attribute.name}" must be a valid UUID reference` };
-      }
-      return { valid: true };
-    }
-
+    case "reference":
     case "reference_data": {
-      // Validate value is a string that exists in the reference dataset's active values
-      if (typeof value !== "string") {
-        return { valid: false, error: `Attribute "${attribute.name}" must be a string (reference data value)` };
-      }
-      const config = attribute.config as { referenceDatasetId: string } | null;
-      if (!config?.referenceDatasetId) {
-        return { valid: false, error: `Attribute "${attribute.name}" has no reference dataset configured` };
-      }
-      // Look up the dataset in the snapshot
-      const dataset = publishedSchema.referenceDatasetsSnapshot.find(
-        (d) => d.id === config.referenceDatasetId,
-      );
-      if (!dataset) {
-        return { valid: false, error: `Reference dataset for attribute "${attribute.name}" not found in snapshot` };
-      }
-      const activeValues = dataset.values.filter((v) => v.isActive);
-      if (!activeValues.some((v) => v.value === value)) {
-        return {
-          valid: false,
-          error: `Attribute "${attribute.name}" must be one of the active reference values: ${activeValues.map((v) => v.value).join(", ")}`,
-        };
+      if (typeof value !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+        return { valid: false, error: `Attribute "${attribute.name}" must be a valid UUID reference` };
       }
       return { valid: true };
     }
@@ -186,5 +163,30 @@ export function validateAttributeValue(
       const _exhaustive: never = attribute.attributeType;
       return { valid: false, error: `Unknown attribute type: ${String(_exhaustive)}` };
     }
+  }
+}
+
+/**
+ * Formats a stored value as a human-readable display string.
+ * Returns null for null/undefined values.
+ */
+export function toDisplayString(
+  valueText: string | null,
+  attributeType: AttributeType,
+): string | null {
+  if (valueText === null || valueText === undefined) return null;
+
+  switch (attributeType) {
+    case "boolean":
+      return valueText === "true" ? "Yes" : "No";
+
+    case "date": {
+      const d = new Date(valueText);
+      if (isNaN(d.getTime())) return valueText;
+      return d.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    }
+
+    default:
+      return valueText;
   }
 }

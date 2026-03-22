@@ -34,12 +34,13 @@ export function DesignerNav({ catalogId, tab }: Props) {
           <button className="px-4 py-1.5 text-sm font-medium rounded-md bg-card text-foreground shadow-sm ring-1 ring-black/5">
             Designer
           </button>
-          <button
-            disabled
-            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground opacity-50 cursor-not-allowed"
+          <Link
+            href={`/catalogs/${catalogId}/operational`}
+            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
+            data-testid="nav-mode-operational"
           >
             Operational
-          </button>
+          </Link>
         </div>
 
         <div className="w-[160px]" />

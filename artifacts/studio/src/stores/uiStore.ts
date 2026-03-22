@@ -62,6 +62,13 @@ interface UiStore {
   openDeleteRelModal: (id: string) => void;
   closeDeleteRelModal: () => void;
 
+  // Operational Mode (O-01)
+  activeTemplateTabId: string | null;
+  setActiveTemplateTab: (templateId: string) => void;
+  isEntryFormOpen: boolean;
+  openEntryForm: () => void;
+  closeEntryForm: () => void;
+
   reset: () => void;
 }
 
@@ -290,6 +297,16 @@ export const useUiStore = create<UiStore>((set, get) => ({
   openDeleteRelModal: (id) => set({ deleteRelModalId: id }),
   closeDeleteRelModal: () => set({ deleteRelModalId: null }),
 
+  // -------------------------------------------------------------------------
+  // Operational Mode (O-01)
+  // -------------------------------------------------------------------------
+
+  activeTemplateTabId: null,
+  setActiveTemplateTab: (templateId) => set({ activeTemplateTabId: templateId }),
+  isEntryFormOpen: false,
+  openEntryForm: () => set({ isEntryFormOpen: true }),
+  closeEntryForm: () => set({ isEntryFormOpen: false }),
+
   reset: () =>
     set({
       activeCatalogId: null,
@@ -310,5 +327,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       relDrawerFromTemplateId: null,
       relDrawerIsDirty: false,
       deleteRelModalId: null,
+      activeTemplateTabId: null,
+      isEntryFormOpen: false,
     }),
 }));

@@ -6,6 +6,7 @@ import {
   type AttributeDefinition,
   type RelationshipDefinition,
   type NodePosition,
+  type SchemaSnapshot,
   type ApiError,
 } from "@/lib/apiClient";
 
@@ -61,6 +62,12 @@ export interface SchemaStore {
   fetchNodePositions: (catalogId: string) => Promise<void>;
   updateNodePositionsLocal: (catalogId: string, positions: NodePosition[]) => void;
 
+  // Published schema snapshot (O-01) — keyed by catalogId
+  publishedSchemasByCatalog: Record<string, SchemaSnapshot | null>;
+  publishedSchemaLoading: Record<string, boolean>;
+  publishedSchemaError: Record<string, ApiError | null>;
+  fetchPublishedSchema: (catalogId: string) => Promise<void>;
+
   reset: () => void;
 }
 
@@ -82,6 +89,9 @@ const initialState = {
   relationshipsError: {} as Record<string, ApiError | null>,
   nodePositionsByCatalog: {} as Record<string, NodePosition[]>,
   nodePositionsLoading: {} as Record<string, boolean>,
+  publishedSchemasByCatalog: {} as Record<string, SchemaSnapshot | null>,
+  publishedSchemaLoading: {} as Record<string, boolean>,
+  publishedSchemaError: {} as Record<string, ApiError | null>,
 };
 
 export const useSchemaStore = create<SchemaStore>((set, get) => ({
@@ -326,6 +336,33 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
         [catalogId]: positions,
       },
     })),
+
+  // -------------------------------------------------------------------------
+  // Published schema snapshot (O-01)
+  // -------------------------------------------------------------------------
+
+  fetchPublishedSchema: async (catalogId: string) => {
+    set((s) => ({
+      publishedSchemaLoading: { ...s.publishedSchemaLoading, [catalogId]: true },
+      publishedSchemaError: { ...s.publishedSchemaError, [catalogId]: null },
+    }));
+    const { data, error } = await apiClient.schema.getCurrentVersion(catalogId);
+    if (error) {
+      set((s) => ({
+        publishedSchemaLoading: { ...s.publishedSchemaLoading, [catalogId]: false },
+        publishedSchemaError: { ...s.publishedSchemaError, [catalogId]: error },
+        publishedSchemasByCatalog: { ...s.publishedSchemasByCatalog, [catalogId]: null },
+      }));
+      return;
+    }
+    set((s) => ({
+      publishedSchemaLoading: { ...s.publishedSchemaLoading, [catalogId]: false },
+      publishedSchemasByCatalog: {
+        ...s.publishedSchemasByCatalog,
+        [catalogId]: data?.snapshot ?? null,
+      },
+    }));
+  },
 
   reset: () => set(initialState),
 }));

@@ -113,6 +113,57 @@ export interface SchemaDiff {
   relationshipsRemoved: Array<{ from: string; label: string; to: string }>;
 }
 
+// ---------------------------------------------------------------------------
+// Schema snapshot types (for Operational Mode / O-01)
+// ---------------------------------------------------------------------------
+
+export interface SnapshotAttribute {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  attributeType: AttributeType;
+  required: boolean;
+  displayOrder: number;
+  config: AttributeConfig;
+}
+
+export interface SnapshotSection {
+  id: string;
+  name: string;
+  description: string | null;
+  displayOrder: number;
+  attributes: SnapshotAttribute[];
+}
+
+export interface SnapshotRelationship {
+  id: string;
+  label: string;
+  cardinality: "1:1" | "1:N" | "M:N";
+  direction: "from" | "to" | "both";
+  targetTemplateId: string;
+  targetTemplateName: string;
+}
+
+export interface SnapshotTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  isSystemSeed: boolean;
+  isReferenceData: boolean;
+  sections: SnapshotSection[];
+  relationships: SnapshotRelationship[];
+}
+
+export interface SchemaSnapshot {
+  version: number;
+  publishedAt: string;
+  catalogId: string;
+  catalogName: string;
+  templates: SnapshotTemplate[];
+}
+
 export interface SchemaVersion {
   id: string;
   catalogId: string;
@@ -122,11 +173,56 @@ export interface SchemaVersion {
   publishedAt: string;
   isCurrent: boolean;
   diff: SchemaDiff | null;
+  snapshot: SchemaSnapshot | null;
 }
+
+// ---------------------------------------------------------------------------
+// Entry types (O-01)
+// ---------------------------------------------------------------------------
+
+export interface FieldValue {
+  attributeId: string;
+  attributeName: string;
+  attributeType: AttributeType;
+  value: string | null;
+  displayValue: string | null;
+}
+
+export interface CatalogEntry {
+  id: string;
+  catalogId: string;
+  templateId: string;
+  templateName: string;
+  schemaVersionId: string;
+  displayName: string;
+  fieldValues: FieldValue[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EntryListItem {
+  id: string;
+  catalogId: string;
+  templateId: string;
+  displayName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEntryInput {
+  catalogId: string;
+  templateId: string;
+  fieldValues: Array<{ attributeId: string; value: string | null }>;
+}
+
+// ---------------------------------------------------------------------------
+// API infrastructure
+// ---------------------------------------------------------------------------
 
 export interface ApiError {
   code: string;
   message: string;
+  details?: Record<string, unknown> | null;
 }
 
 export interface ApiResponse<T> {
@@ -320,6 +416,25 @@ export const apiClient = {
       fetchApi<SchemaVersion>("/schema/publish", {
         method: "POST",
         body: JSON.stringify({ catalogId }),
+      }),
+  },
+
+  // Entry routes (O-01)
+  entries: {
+    list: (catalogId: string, templateId: string) =>
+      fetchApi<EntryListItem[]>(
+        `/entries?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}`,
+        { method: "GET" },
+      ),
+    search: (catalogId: string, templateId: string, q: string, limit = 10) =>
+      fetchApi<EntryListItem[]>(
+        `/entries/search?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}&q=${encodeURIComponent(q)}&limit=${limit}`,
+        { method: "GET" },
+      ),
+    create: (body: CreateEntryInput) =>
+      fetchApi<CatalogEntry>("/entries", {
+        method: "POST",
+        body: JSON.stringify(body),
       }),
   },
 };
