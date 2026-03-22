@@ -8,7 +8,7 @@ interface UiStore {
   setActiveCatalog: (id: string, status: CatalogStatus) => void;
   clearActiveCatalog: () => void;
 
-  // Drawer
+  // Template drawer (D-01)
   drawerMode: "closed" | "create" | "edit";
   drawerTemplateId: string | null;
   drawerIsDirty: boolean;
@@ -28,10 +28,26 @@ interface UiStore {
   confirmDiscard: () => void;
   cancelDiscard: () => void;
 
-  // Delete Modal
+  // Delete Modal (templates)
   deleteModalTemplateId: string | null;
   openDeleteModal: (id: string) => void;
   closeDeleteModal: () => void;
+
+  // Section drawer (D-02)
+  sectionDrawerMode: "closed" | "create" | "edit";
+  sectionDrawerTemplateId: string | null;
+  sectionDrawerSectionId: string | null;
+  sectionDrawerIsDirty: boolean;
+  sectionGuardAction: (() => void) | null;
+  openCreateSectionDrawer: (templateId: string) => void;
+  openEditSectionDrawer: (templateId: string, sectionId: string) => void;
+  requestCloseSectionDrawer: () => void;
+  closeSectionDrawer: () => void;
+  setSectionDrawerDirty: (dirty: boolean) => void;
+  confirmSectionDiscard: () => void;
+  cancelSectionDiscard: () => void;
+
+  reset: () => void;
 }
 
 export const useUiStore = create<UiStore>((set, get) => ({
@@ -108,4 +124,128 @@ export const useUiStore = create<UiStore>((set, get) => ({
   deleteModalTemplateId: null,
   openDeleteModal: (id) => set({ deleteModalTemplateId: id }),
   closeDeleteModal: () => set({ deleteModalTemplateId: null }),
+
+  // -------------------------------------------------------------------------
+  // Section Drawer (D-02)
+  // -------------------------------------------------------------------------
+
+  sectionDrawerMode: "closed",
+  sectionDrawerTemplateId: null,
+  sectionDrawerSectionId: null,
+  sectionDrawerIsDirty: false,
+  sectionGuardAction: null,
+
+  openCreateSectionDrawer: (templateId: string) => {
+    const { sectionDrawerIsDirty } = get();
+    if (sectionDrawerIsDirty) {
+      set({
+        sectionGuardAction: () =>
+          set({
+            sectionDrawerMode: "create",
+            sectionDrawerTemplateId: templateId,
+            sectionDrawerSectionId: null,
+            sectionDrawerIsDirty: false,
+            sectionGuardAction: null,
+          }),
+      });
+    } else {
+      set({
+        sectionDrawerMode: "create",
+        sectionDrawerTemplateId: templateId,
+        sectionDrawerSectionId: null,
+        sectionDrawerIsDirty: false,
+      });
+    }
+  },
+
+  openEditSectionDrawer: (templateId: string, sectionId: string) => {
+    const { sectionDrawerIsDirty, sectionDrawerSectionId } = get();
+    if (sectionDrawerSectionId === sectionId) return;
+
+    if (sectionDrawerIsDirty) {
+      set({
+        sectionGuardAction: () =>
+          set({
+            sectionDrawerMode: "edit",
+            sectionDrawerTemplateId: templateId,
+            sectionDrawerSectionId: sectionId,
+            sectionDrawerIsDirty: false,
+            sectionGuardAction: null,
+          }),
+      });
+    } else {
+      set({
+        sectionDrawerMode: "edit",
+        sectionDrawerTemplateId: templateId,
+        sectionDrawerSectionId: sectionId,
+        sectionDrawerIsDirty: false,
+      });
+    }
+  },
+
+  requestCloseSectionDrawer: () => {
+    const { sectionDrawerIsDirty } = get();
+    if (sectionDrawerIsDirty) {
+      set({
+        sectionGuardAction: () =>
+          set({
+            sectionDrawerMode: "closed",
+            sectionDrawerTemplateId: null,
+            sectionDrawerSectionId: null,
+            sectionDrawerIsDirty: false,
+            sectionGuardAction: null,
+          }),
+      });
+    } else {
+      set({
+        sectionDrawerMode: "closed",
+        sectionDrawerTemplateId: null,
+        sectionDrawerSectionId: null,
+        sectionDrawerIsDirty: false,
+      });
+    }
+  },
+
+  closeSectionDrawer: () =>
+    set({
+      sectionDrawerMode: "closed",
+      sectionDrawerTemplateId: null,
+      sectionDrawerSectionId: null,
+      sectionDrawerIsDirty: false,
+      sectionGuardAction: null,
+    }),
+
+  setSectionDrawerDirty: (dirty: boolean) => set({ sectionDrawerIsDirty: dirty }),
+
+  confirmSectionDiscard: () => {
+    const { sectionGuardAction } = get();
+    if (sectionGuardAction) sectionGuardAction();
+    else
+      set({
+        sectionDrawerMode: "closed",
+        sectionDrawerTemplateId: null,
+        sectionDrawerSectionId: null,
+        sectionDrawerIsDirty: false,
+      });
+    set({ sectionGuardAction: null });
+  },
+
+  cancelSectionDiscard: () => set({ sectionGuardAction: null }),
+
+  reset: () =>
+    set({
+      activeCatalogId: null,
+      activeCatalogStatus: null,
+      drawerMode: "closed",
+      drawerTemplateId: null,
+      drawerIsDirty: false,
+      drawerIsReferenceData: false,
+      guardAction: null,
+      deleteModalTemplateId: null,
+      sectionDrawerMode: "closed",
+      sectionDrawerTemplateId: null,
+      sectionDrawerSectionId: null,
+      sectionDrawerIsDirty: false,
+      sectionGuardAction: null,
+    }),
 }));

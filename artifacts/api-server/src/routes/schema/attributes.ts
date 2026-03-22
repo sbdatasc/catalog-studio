@@ -12,6 +12,8 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
       NOT_FOUND: 404,
       CONFLICT: 409,
       VALIDATION_ERROR: 422,
+      SECTION_IN_USE: 409,
+      CATALOG_LOCKED: 423,
     };
     const status = statusMap[err.code] ?? 500;
     sendError(res, status, err.code as Parameters<typeof sendError>[2], err.message);

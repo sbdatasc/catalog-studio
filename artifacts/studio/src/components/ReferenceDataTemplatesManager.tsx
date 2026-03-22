@@ -56,6 +56,7 @@ export function ReferenceDataTemplatesManager({ catalogId }: Props) {
           onRetry={() => fetchReferenceDataTemplates(catalogId)}
           emptyMessage="Reference Data templates define controlled vocabularies and lookup values used across your catalog's metadata."
           onCreateNew={() => openCreateDrawer({ isReferenceData: true })}
+          tabContext="reference-data"
         />
 
       </div>

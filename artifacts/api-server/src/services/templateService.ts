@@ -1,4 +1,4 @@
-import { eq, asc, count, sql, and } from "drizzle-orm";
+import { eq, asc, count, sql, and, max } from "drizzle-orm";
 import {
   catalogsTable,
   schemaTemplatesTable,
@@ -461,13 +461,22 @@ export async function createSection(
     throw new ServiceError("CONFLICT", `A section named "${input.name}" already exists in this template`);
   }
 
+  let displayOrder = input.displayOrder;
+  if (displayOrder === undefined) {
+    const [maxRow] = await db
+      .select({ maxOrder: max(schemaSectionsTable.displayOrder) })
+      .from(schemaSectionsTable)
+      .where(eq(schemaSectionsTable.templateId, templateId));
+    displayOrder = (maxRow?.maxOrder ?? -1) + 1;
+  }
+
   const [row] = await db
     .insert(schemaSectionsTable)
     .values({
       templateId,
       name: input.name,
       description: input.description ?? null,
-      displayOrder: input.displayOrder ?? 0,
+      displayOrder,
     })
     .returning();
 
@@ -516,10 +525,34 @@ export async function deleteSection(id: string): Promise<void> {
   await assertCatalogNotLocked(catalogId);
 
   if (section.attributeCount > 0) {
-    throw new ServiceError(
-      "SECTION_IN_USE",
-      `Section "${section.name}" has attributes and cannot be deleted. Remove all attributes first.`,
-    );
+    // Check if any attributes in this section have field values
+    const attributeIds = await db
+      .select({ id: schemaAttributesTable.id })
+      .from(schemaAttributesTable)
+      .where(eq(schemaAttributesTable.sectionId, id));
+
+    if (attributeIds.length > 0) {
+      const [valueRow] = await db
+        .select({ id: catalogFieldValuesTable.id })
+        .from(catalogFieldValuesTable)
+        .where(
+          sql`${catalogFieldValuesTable.attributeId} = ANY(ARRAY[${sql.join(
+            attributeIds.map((a) => sql`${a.id}::uuid`),
+            sql`, `,
+          )}])`,
+        )
+        .limit(1);
+
+      if (valueRow) {
+        throw new ServiceError(
+          "SECTION_IN_USE",
+          `Section "${section.name}" has data in existing entries and cannot be deleted.`,
+        );
+      }
+    }
+
+    // Cascade-delete all attributes in this section first
+    await db.delete(schemaAttributesTable).where(eq(schemaAttributesTable.sectionId, id));
   }
 
   await db.delete(schemaSectionsTable).where(eq(schemaSectionsTable.id, id));
@@ -635,6 +668,15 @@ export async function createAttribute(
 
   const config = validateAttributeConfig(input.attributeType, input.config);
 
+  let displayOrder = input.displayOrder;
+  if (displayOrder === undefined) {
+    const [maxRow] = await db
+      .select({ maxOrder: max(schemaAttributesTable.displayOrder) })
+      .from(schemaAttributesTable)
+      .where(eq(schemaAttributesTable.sectionId, sectionId));
+    displayOrder = (maxRow?.maxOrder ?? -1) + 1;
+  }
+
   const [row] = await db
     .insert(schemaAttributesTable)
     .values({
@@ -644,7 +686,7 @@ export async function createAttribute(
       description: input.description ?? null,
       attributeType: input.attributeType,
       required: input.required ?? false,
-      displayOrder: input.displayOrder ?? 0,
+      displayOrder,
       config,
     })
     .returning();
@@ -711,8 +753,8 @@ export async function deleteAttribute(id: string): Promise<void> {
 
   if (valueRow) {
     throw new ServiceError(
-      "CONFLICT",
-      `Attribute "${attr.name}" has catalog entry values and cannot be deleted. Remove entry values first.`,
+      "SECTION_IN_USE",
+      `Attribute "${attr.name}" has data in existing entries and cannot be deleted.`,
     );
   }
 

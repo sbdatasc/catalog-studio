@@ -179,17 +179,17 @@ router.post("/:id/sections", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// PUT /api/schema/templates/:id/sections/reorder
+// POST /api/schema/templates/:id/sections/reorder
 // ---------------------------------------------------------------------------
 
-router.put("/:id/sections/reorder", async (req, res): Promise<void> => {
-  const body = z.object({ ids: z.array(z.string().uuid()) }).safeParse(req.body);
+router.post("/:id/sections/reorder", async (req, res): Promise<void> => {
+  const body = z.object({ orderedIds: z.array(z.string().uuid()) }).safeParse(req.body);
   if (!body.success) {
-    sendError(res, 422, "VALIDATION_ERROR", "ids must be an array of UUIDs");
+    sendError(res, 422, "VALIDATION_ERROR", "orderedIds must be an array of UUIDs");
     return;
   }
   try {
-    await templateService.reorderSections(req.params.id, body.data.ids);
+    await templateService.reorderSections(req.params.id, body.data.orderedIds);
     sendSuccess(res, { reordered: true });
   } catch (err) {
     handleError(res, err);

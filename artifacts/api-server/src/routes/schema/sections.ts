@@ -13,6 +13,7 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
       CONFLICT: 409,
       VALIDATION_ERROR: 422,
       SECTION_IN_USE: 409,
+      CATALOG_LOCKED: 423,
     };
     const status = statusMap[err.code] ?? 500;
     sendError(res, status, err.code as Parameters<typeof sendError>[2], err.message);
@@ -106,17 +107,17 @@ router.post("/:id/attributes", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// PUT /api/schema/sections/:id/attributes/reorder
+// POST /api/schema/sections/:id/attributes/reorder
 // ---------------------------------------------------------------------------
 
-router.put("/:id/attributes/reorder", async (req, res): Promise<void> => {
-  const body = z.object({ ids: z.array(z.string().uuid()) }).safeParse(req.body);
+router.post("/:id/attributes/reorder", async (req, res): Promise<void> => {
+  const body = z.object({ orderedIds: z.array(z.string().uuid()) }).safeParse(req.body);
   if (!body.success) {
-    sendError(res, 422, "VALIDATION_ERROR", "ids must be an array of UUIDs");
+    sendError(res, 422, "VALIDATION_ERROR", "orderedIds must be an array of UUIDs");
     return;
   }
   try {
-    await templateService.reorderAttributes(req.params.id, body.data.ids);
+    await templateService.reorderAttributes(req.params.id, body.data.orderedIds);
     sendSuccess(res, { reordered: true });
   } catch (err) {
     handleError(res, err);

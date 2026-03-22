@@ -102,12 +102,14 @@ React + Vite frontend. Served at previewPath `/` on port 18425.
 - `/catalogs` → `CatalogsPage`
 - `/catalogs/:catalogId/designer/templates` → `DesignerPage` (Templates tab)
 - `/catalogs/:catalogId/designer/reference-data` → `DesignerPage` (Reference Data tab)
+- `/catalogs/:catalogId/designer/templates/:templateId` → `TemplateDetailPage` (D-02 Section & Attribute Builder)
+- `/catalogs/:catalogId/designer/reference-data/:templateId` → `TemplateDetailPage` (Reference Data context)
 
 #### State Management (Zustand)
 
 - `catalogStore.ts` — `catalogs[]`, `catalogsLoading`, `catalogsError`, `fetchCatalogs`, `addCatalog`, `updateCatalog`, `removeCatalog`
-- `schemaStore.ts` — `templates[]` (regular), `referenceDataTemplates[]`, `fetchTemplates(catalogId)`, `fetchReferenceDataTemplates(catalogId)`, add/update/remove helpers for both lists
-- `uiStore.ts` — drawer state (`drawerMode`, `drawerTemplateId`, `drawerIsDirty`, `drawerIsReferenceData`), `activeCatalogId`, `activeCatalogStatus`, delete modal state; provides `openCreateDrawer({ isReferenceData })`, `requestCloseDrawer()`, `closeDrawer()`
+- `schemaStore.ts` — `templates[]` (regular), `referenceDataTemplates[]`, `sectionsByTemplate` (keyed by templateId), `attributesBySection` (keyed by sectionId), fetch/add/update/remove/reorder helpers for all
+- `uiStore.ts` — template drawer state, section drawer state machine (`sectionDrawerMode`, `sectionDrawerTemplateId`, `sectionDrawerSectionId`, `sectionDrawerIsDirty`, `sectionGuardAction`), `activeCatalogId`, `activeCatalogStatus`, delete modal state
 
 #### Pages & Components
 
@@ -116,11 +118,24 @@ React + Vite frontend. Served at previewPath `/` on port 18425.
 - `DesignerNav.tsx` — nav bar with "← Catalogs" back link, Templates/Reference Data/Publish tabs (catalog-aware URLs)
 - `EntityTypeManager.tsx` — Templates tab content; fetches `templates` via `fetchTemplates(catalogId)`
 - `ReferenceDataTemplatesManager.tsx` — Reference Data tab content; fetches `referenceDataTemplates` via `fetchReferenceDataTemplates(catalogId)`
-- `EntityTypeGrid.tsx` — responsive card grid (props: templates, loading, error, onRetry, emptyMessage)
-- `EntityTypeCard.tsx` — template card; shows "System" grey badge for `isSystemSeed`, "Reference Data" amber badge for `isReferenceData`
-- `EntityTypeForm.tsx` — `EntityTypeDrawer` (combined form + drawer for create/edit; reads `activeCatalogId` and `drawerIsReferenceData` from uiStore)
+- `EntityTypeGrid.tsx` — responsive card grid (props: templates, loading, error, onRetry, emptyMessage, tabContext)
+- `EntityTypeCard.tsx` — template card; clickable to navigate to template detail page; shows "System"/"Reference Data" badges
+- `EntityTypeForm.tsx` — `EntityTypeDrawer` (combined form + drawer for create/edit)
 - `DeleteConfirmModal.tsx` — handles deletion from both templates and referenceDataTemplates lists
 - `UnsavedChangesGuard.tsx` — modal triggered by `uiStore.guardAction`
+
+#### D-02 Template Detail Components (`components/designer/templates/`)
+
+- `TemplateDetailPage.tsx` — full page: breadcrumb, catalog lock banner, section list, footer add-section button; mounts SectionDrawer + DeleteSectionModal + DeleteAttributeModal
+- `SectionList.tsx` — @dnd-kit/core DndContext + SortableContext; handles drag-end with optimistic reorder + API call + revert on failure
+- `SectionPanel.tsx` — individual section card using @dnd-kit/sortable `useSortable`; collapsible, drag handle, renders SectionHeader + AttributeList
+- `SectionHeader.tsx` — section name, attribute count badge, chevron collapse, edit/delete icons on hover
+- `AttributeList.tsx` — fetches attributes on mount via schemaStore; handles add/edit inline form; up/down arrow reorder with optimistic update
+- `AttributeRow.tsx` — attribute display: name, required star, type badge, up/down arrows + edit/delete on hover
+- `AttributeInlineForm.tsx` — inline create/edit form; type-conditional config fields (enum options textarea, reference/reference_data target template dropdown); type locked on edit
+- `SectionDrawer.tsx` — DrawerShell (right panel) for create/edit section; own AlertDialog unsaved-changes guard
+- `DeleteSectionModal.tsx` — AlertDialog to confirm section deletion; cascades to attributes if no field values exist; shows SECTION_IN_USE error if field values exist
+- `DeleteAttributeModal.tsx` — AlertDialog to confirm attribute deletion
 
 ### `lib/db` (`@workspace/db`)
 

@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CatalogsPage } from "@/pages/CatalogsPage";
 import { DesignerPage } from "@/pages/DesignerPage";
+import { TemplateDetailPage } from "@/components/designer/templates/TemplateDetailPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,30 @@ function Router() {
   return (
     <Switch>
       <Route path="/catalogs" component={CatalogsPage} />
+
+      {/* Template detail pages */}
+      <Route
+        path="/catalogs/:catalogId/designer/templates/:templateId"
+        component={({ params }) => (
+          <TemplateDetailPage
+            catalogId={params.catalogId}
+            templateId={params.templateId}
+            tabContext="templates"
+          />
+        )}
+      />
+      <Route
+        path="/catalogs/:catalogId/designer/reference-data/:templateId"
+        component={({ params }) => (
+          <TemplateDetailPage
+            catalogId={params.catalogId}
+            templateId={params.templateId}
+            tabContext="reference-data"
+          />
+        )}
+      />
+
+      {/* Designer grid pages */}
       <Route
         path="/catalogs/:catalogId/designer/templates"
         component={({ params }) => <DesignerPage catalogId={params.catalogId} tab="templates" />}
@@ -37,6 +62,7 @@ function Router() {
         path="/catalogs/:catalogId/designer/reference-data"
         component={({ params }) => <DesignerPage catalogId={params.catalogId} tab="reference-data" />}
       />
+
       <Route path="/catalogs/:catalogId/designer" component={CatalogRootRedirect} />
       <Route path="/" component={RootRedirect} />
       <Route component={NotFound} />

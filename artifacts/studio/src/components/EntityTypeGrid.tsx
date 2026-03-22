@@ -12,9 +12,10 @@ interface Props {
   onRetry: () => void;
   emptyMessage?: string;
   onCreateNew?: () => void;
+  tabContext?: "templates" | "reference-data";
 }
 
-export function EntityTypeGrid({ templates, loading, error, onRetry, emptyMessage, onCreateNew }: Props) {
+export function EntityTypeGrid({ templates, loading, error, onRetry, emptyMessage, onCreateNew, tabContext = "templates" }: Props) {
   const { openCreateDrawer } = useUiStore();
   const handleCreate = onCreateNew ?? (() => openCreateDrawer());
 
@@ -74,7 +75,7 @@ export function EntityTypeGrid({ templates, loading, error, onRetry, emptyMessag
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500">
       {templates.map((t) => (
-        <EntityTypeCard key={t.id} template={t} />
+        <EntityTypeCard key={t.id} template={t} tabContext={tabContext} />
       ))}
     </div>
   );
