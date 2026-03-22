@@ -5,6 +5,68 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * Typed error codes for all application errors
+ */
+export type AppErrorCode = (typeof AppErrorCode)[keyof typeof AppErrorCode];
+
+export const AppErrorCode = {
+  BAD_REQUEST: "BAD_REQUEST",
+  UNAUTHORIZED: "UNAUTHORIZED",
+  FORBIDDEN: "FORBIDDEN",
+  NOT_FOUND: "NOT_FOUND",
+  CONFLICT: "CONFLICT",
+  UNPROCESSABLE: "UNPROCESSABLE",
+  INTERNAL_ERROR: "INTERNAL_ERROR",
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+} as const;
+
+/**
+ * Optional additional error context (field errors, etc.)
+ * @nullable
+ */
+export type AppErrorDetails = { [key: string]: unknown } | null;
+
+/**
+ * Structured error object included in error responses
+ */
+export interface AppError {
+  code: AppErrorCode;
+  /** Human-readable error message */
+  message: string;
+  /**
+   * Optional additional error context (field errors, etc.)
+   * @nullable
+   */
+  details?: AppErrorDetails;
+}
+
+/**
+ * Optional metadata attached to responses (pagination, timing, etc.)
+ */
+export interface ApiResponseMeta {
+  [key: string]: unknown;
+}
+
 export interface HealthStatus {
   status: string;
+}
+
+/**
+ * Envelope for health check responses
+ */
+export interface HealthCheckApiResponse {
+  data: HealthStatus | null;
+  error: AppError | null;
+  meta?: ApiResponseMeta | null;
+}
+
+/**
+ * Generic error envelope returned on failure
+ */
+export interface ErrorApiResponse {
+  /** @nullable */
+  data: null;
+  error: AppError;
+  meta?: ApiResponseMeta | null;
 }

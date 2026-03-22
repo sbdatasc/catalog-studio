@@ -11,6 +11,47 @@ import * as zod from "zod";
  * Returns server health status
  * @summary Health check
  */
-export const HealthCheckResponse = zod.object({
-  status: zod.string(),
-});
+export const HealthCheckResponse = zod
+  .object({
+    data: zod.union([
+      zod.object({
+        status: zod.string(),
+      }),
+      zod.null(),
+    ]),
+    error: zod.union([
+      zod
+        .object({
+          code: zod
+            .enum([
+              "BAD_REQUEST",
+              "UNAUTHORIZED",
+              "FORBIDDEN",
+              "NOT_FOUND",
+              "CONFLICT",
+              "UNPROCESSABLE",
+              "INTERNAL_ERROR",
+              "VALIDATION_ERROR",
+            ])
+            .describe("Typed error codes for all application errors"),
+          message: zod.string().describe("Human-readable error message"),
+          details: zod
+            .record(zod.string(), zod.unknown())
+            .nullish()
+            .describe("Optional additional error context (field errors, etc.)"),
+        })
+        .describe("Structured error object included in error responses"),
+      zod.null(),
+    ]),
+    meta: zod
+      .union([
+        zod
+          .record(zod.string(), zod.unknown())
+          .describe(
+            "Optional metadata attached to responses (pagination, timing, etc.)",
+          ),
+        zod.null(),
+      ])
+      .optional(),
+  })
+  .describe("Envelope for health check responses");

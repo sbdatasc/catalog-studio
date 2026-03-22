@@ -23,9 +23,50 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/HealthStatus"
+                $ref: "#/components/schemas/HealthCheckApiResponse"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApiResponse"
 components:
   schemas:
+    AppErrorCode:
+      type: string
+      enum:
+        - BAD_REQUEST
+        - UNAUTHORIZED
+        - FORBIDDEN
+        - NOT_FOUND
+        - CONFLICT
+        - UNPROCESSABLE
+        - INTERNAL_ERROR
+        - VALIDATION_ERROR
+      description: Typed error codes for all application errors
+
+    AppError:
+      type: object
+      description: Structured error object included in error responses
+      properties:
+        code:
+          $ref: "#/components/schemas/AppErrorCode"
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: ["object", "null"]
+          description: Optional additional error context (field errors, etc.)
+          additionalProperties: true
+      required:
+        - code
+        - message
+
+    ApiResponseMeta:
+      type: object
+      description: Optional metadata attached to responses (pagination, timing, etc.)
+      additionalProperties: true
+
     HealthStatus:
       type: object
       properties:
@@ -34,3 +75,38 @@ components:
       required:
         - status
 
+    HealthCheckApiResponse:
+      type: object
+      description: Envelope for health check responses
+      properties:
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/HealthStatus"
+            - type: "null"
+        error:
+          oneOf:
+            - $ref: "#/components/schemas/AppError"
+            - type: "null"
+        meta:
+          oneOf:
+            - $ref: "#/components/schemas/ApiResponseMeta"
+            - type: "null"
+      required:
+        - data
+        - error
+
+    ErrorApiResponse:
+      type: object
+      description: Generic error envelope returned on failure
+      properties:
+        data:
+          type: "null"
+        error:
+          $ref: "#/components/schemas/AppError"
+        meta:
+          oneOf:
+            - $ref: "#/components/schemas/ApiResponseMeta"
+            - type: "null"
+      required:
+        - data
+        - error
