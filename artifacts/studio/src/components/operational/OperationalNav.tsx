@@ -56,6 +56,13 @@ export function OperationalNav({ catalogId, catalogName, tabs }: Props) {
           <button className="px-4 py-1.5 text-sm font-medium rounded-md bg-card text-foreground shadow-sm ring-1 ring-black/5">
             Operational
           </button>
+          <Link
+            href={`/catalogs/${catalogId}/graphql`}
+            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
+            data-testid="nav-mode-api"
+          >
+            API
+          </Link>
         </div>
 
         <div className="w-[160px]" />

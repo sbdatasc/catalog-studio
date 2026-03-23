@@ -218,9 +218,14 @@ router.post("/publish", async (req, res): Promise<void> => {
 // GET /api/schema/templates/current-version
 // ---------------------------------------------------------------------------
 
-router.get("/current-version", async (_req, res): Promise<void> => {
+router.get("/current-version", async (req, res): Promise<void> => {
+  const catalogId = req.query["catalogId"] as string | undefined;
+  if (!catalogId) {
+    sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
+    return;
+  }
   try {
-    const version = await templateService.getCurrentPublishedSchema();
+    const version = await templateService.getCurrentPublishedSchema(catalogId);
     if (!version) {
       sendError(res, 404, "NOT_FOUND", "No published schema version found");
       return;

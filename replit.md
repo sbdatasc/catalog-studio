@@ -68,6 +68,19 @@ The project is structured as a pnpm workspace monorepo.
 - Utility `getCompatibleTemplateIds` for identifying linkable templates.
 - UI components for displaying links (`EntryLinkChip`), managing relationships (`RelationshipSubsection`, `RelationshipsTab`), and facilitating the drag-and-drop linking experience (`CardLinkHandle`, `LinkModeOverlay`, `RelationshipSelectionDialog`).
 
+**O-01 Operational Mode — Entry Creation:**
+- Full CRUD entry lifecycle: `entryService.ts` (createEntry, listEntries, searchEntries, getEntry, updateEntry, deleteEntry) + `coercionService.ts` (toStorageString, fromStorageString, validateAttributeValue, toDisplayString).
+- Entries validated against the published schema snapshot; `REQUIRED_FIELD_MISSING` / `REFERENCE_NOT_FOUND` / `VALIDATION_ERROR` service error codes.
+- REST routes: `POST /api/entries`, `GET /api/entries`, `GET /api/entries/search`, `PATCH /api/entries/:id`, `DELETE /api/entries/:id`.
+- Frontend: `OperationalPage.tsx` with tabbed template navigation, card/table view toggle, debounced search. `EntryForm.tsx` with `SectionAccordion`, 8 typed field controls in `components/operational/fields/`. `entryStore.ts` (paginated entry lists, activeEntry, linksByEntry). `uiStore.ts` additions: activeTemplateTabId, isEntryFormOpen, entryListViewMode.
+
+**G-02 Embedded GraphiQL Playground:**
+- Route `/catalogs/:catalogId/graphql` renders `GraphQLPage.tsx` — full-height GraphiQL editor with the catalog's GraphQL endpoint pre-configured.
+- `createCatalogFetcher` auto-injects `catalogId` variable into all query requests.
+- `ExampleQueriesPanel` generates schema-aware example queries and loads them into the editor via `initialQuery` + key-based remount (GraphiQL v5 API; `query` prop removed).
+- `GraphQLNav` / `GraphQLPageHeader` / `GraphQLPageHeader` nav components; "API" link added to `DesignerNav` and `OperationalNav`.
+- CSP middleware added for `/catalogs/:catalogId/graphql` path in Express `app.ts` (using Express 5 compatible route pattern).
+
 **G-01 Runtime GraphQL Engine:**
 - `graphql` (graphql-js ^16) installed in `api-server` as the runtime schema building and execution library.
 - `artifacts/api-server/src/graphql/` contains: `context.ts` (GraphQLContext, SlugMap), `filters.ts` (6 scalar filter input types + in-memory filter application), `resolvers.ts` (rootList, rootSingle, relationship, attribute, refData resolvers), `engine.ts` (schema building, caching, slug utilities).

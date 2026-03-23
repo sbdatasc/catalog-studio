@@ -10,6 +10,7 @@ import { RelationshipsPage } from "@/pages/RelationshipsPage";
 import { PublishPage } from "@/pages/PublishPage";
 import { OperationalPage } from "@/pages/OperationalPage";
 import { EntryDetailPage } from "@/pages/EntryDetailPage";
+import { GraphQLPage } from "@/pages/GraphQLPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -97,6 +98,12 @@ function Router() {
       <Route
         path="/catalogs/:catalogId/operational"
         component={({ params }) => <OperationalPage catalogId={params.catalogId} />}
+      />
+
+      {/* GraphQL playground (G-02) */}
+      <Route
+        path="/catalogs/:catalogId/graphql"
+        component={({ params }) => <GraphQLPage catalogId={params.catalogId} />}
       />
 
       <Route path="/catalogs/:catalogId/designer" component={CatalogRootRedirect} />

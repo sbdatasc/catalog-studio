@@ -41,6 +41,13 @@ export function DesignerNav({ catalogId, tab }: Props) {
           >
             Operational
           </Link>
+          <Link
+            href={`/catalogs/${catalogId}/graphql`}
+            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
+            data-testid="nav-mode-api"
+          >
+            API
+          </Link>
         </div>
 
         <div className="w-[160px]" />
