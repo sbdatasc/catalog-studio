@@ -5,6 +5,7 @@ import {
   type CatalogEntry,
   type ApiError,
   type PaginatedEntries,
+  type EntryLinkInstance,
 } from "@/lib/apiClient";
 
 interface PaginationState {
@@ -31,6 +32,13 @@ interface EntryStore {
   setActiveEntry: (entry: CatalogEntry | null) => void;
   fetchEntry: (id: string) => Promise<void>;
 
+  // O-03 — Link state
+  linksByEntry: Record<string, EntryLinkInstance[]>;
+  linksLoading: Record<string, boolean>;
+  fetchLinks: (entryId: string) => Promise<void>;
+  addLink: (entryId: string, link: EntryLinkInstance) => void;
+  removeLink: (entryId: string, linkId: string) => void;
+
   reset: () => void;
 }
 
@@ -45,6 +53,8 @@ const initialState = {
   activeEntry: null as CatalogEntry | null,
   activeEntryLoading: false,
   activeEntryError: null as ApiError | null,
+  linksByEntry: {} as Record<string, EntryLinkInstance[]>,
+  linksLoading: {} as Record<string, boolean>,
 };
 
 export const useEntryStore = create<EntryStore>((set, get) => ({
@@ -199,6 +209,37 @@ export const useEntryStore = create<EntryStore>((set, get) => ({
   },
 
   setActiveEntry: (entry) => set({ activeEntry: entry }),
+
+  fetchLinks: async (entryId: string) => {
+    set((s) => ({ linksLoading: { ...s.linksLoading, [entryId]: true } }));
+    const result = await apiClient.entries.getLinks(entryId);
+    if (result.error) {
+      set((s) => ({ linksLoading: { ...s.linksLoading, [entryId]: false } }));
+      return;
+    }
+    set((s) => ({
+      linksLoading: { ...s.linksLoading, [entryId]: false },
+      linksByEntry: { ...s.linksByEntry, [entryId]: result.data ?? [] },
+    }));
+  },
+
+  addLink: (entryId: string, link: EntryLinkInstance) => {
+    set((s) => ({
+      linksByEntry: {
+        ...s.linksByEntry,
+        [entryId]: [...(s.linksByEntry[entryId] ?? []), link],
+      },
+    }));
+  },
+
+  removeLink: (entryId: string, linkId: string) => {
+    set((s) => ({
+      linksByEntry: {
+        ...s.linksByEntry,
+        [entryId]: (s.linksByEntry[entryId] ?? []).filter((l) => l.id !== linkId),
+      },
+    }));
+  },
 
   reset: () => set(initialState),
 }));

@@ -76,6 +76,17 @@ interface UiStore {
   toggleColumnPicker: () => void;
   closeColumnPicker: () => void;
 
+  // Entry link mode (O-03)
+  linkModeActive: boolean;
+  linkModeSourceEntryId: string | null;
+  startLinkMode: (sourceEntryId: string) => void;
+  endLinkMode: () => void;
+
+  relationshipLinkDrawerOpen: boolean;
+  relationshipLinkDrawerRelId: string | null;
+  openRelationshipLinkDrawer: (relationshipId: string) => void;
+  closeRelationshipLinkDrawer: () => void;
+
   reset: () => void;
 }
 
@@ -323,6 +334,23 @@ export const useUiStore = create<UiStore>((set, get) => ({
   isColumnPickerOpen: false,
   toggleColumnPicker: () => set((s) => ({ isColumnPickerOpen: !s.isColumnPickerOpen })),
   closeColumnPicker: () => set({ isColumnPickerOpen: false }),
+
+  // -------------------------------------------------------------------------
+  // Entry link mode (O-03)
+  // -------------------------------------------------------------------------
+
+  linkModeActive: false,
+  linkModeSourceEntryId: null,
+  startLinkMode: (sourceEntryId: string) =>
+    set({ linkModeActive: true, linkModeSourceEntryId: sourceEntryId }),
+  endLinkMode: () => set({ linkModeActive: false, linkModeSourceEntryId: null }),
+
+  relationshipLinkDrawerOpen: false,
+  relationshipLinkDrawerRelId: null,
+  openRelationshipLinkDrawer: (relationshipId: string) =>
+    set({ relationshipLinkDrawerOpen: true, relationshipLinkDrawerRelId: relationshipId }),
+  closeRelationshipLinkDrawer: () =>
+    set({ relationshipLinkDrawerOpen: false, relationshipLinkDrawerRelId: null }),
 
   reset: () =>
     set({

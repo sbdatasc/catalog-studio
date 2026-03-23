@@ -1,12 +1,14 @@
-import { eq, and, ilike, desc, sql } from "drizzle-orm";
+import { eq, and, ilike, desc, sql, or } from "drizzle-orm";
 import {
   catalogEntriesTable,
   catalogFieldValuesTable,
+  catalogEntryRelationshipsTable,
   catalogsTable,
   schemaVersionsTable,
   type AttributeType,
   type SchemaSnapshot,
   type SnapshotAttribute,
+  type SnapshotRelationship,
   type SnapshotTemplate,
 } from "@workspace/db";
 import { getDb } from "../db/connection";
@@ -56,6 +58,28 @@ export interface PaginatedEntries {
   total: number;
   page: number;
   limit: number;
+}
+
+export interface EntryLinkInstance {
+  id: string;
+  relationshipId: string;
+  relationshipLabel: string;
+  cardinality: "1:1" | "1:N" | "M:N";
+  direction: "from" | "to" | "both";
+  fromEntryId: string;
+  fromEntryName: string;
+  fromTemplateId: string;
+  toEntryId: string;
+  toEntryName: string;
+  toTemplateId: string;
+  toTemplateName: string;
+  createdAt: string;
+}
+
+export interface LinkEntriesInput {
+  fromEntryId: string;
+  toEntryId: string;
+  relationshipId: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -465,6 +489,263 @@ export async function listEntries(
     page: safePage,
     limit: safeLimit,
   };
+}
+
+// ---------------------------------------------------------------------------
+// O-03 — Relationship Instance Linking
+// ---------------------------------------------------------------------------
+
+function findRelationshipInSnapshot(
+  snapshot: SchemaSnapshot,
+  relationshipId: string,
+): SnapshotRelationship | null {
+  for (const t of snapshot.templates) {
+    const rel = t.relationships.find((r) => r.id === relationshipId);
+    if (rel) return rel;
+  }
+  return null;
+}
+
+export async function getLinkedEntries(entryId: string): Promise<EntryLinkInstance[]> {
+  const db = getDb();
+
+  const [entryRow] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId, templateId: catalogEntriesTable.templateId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, entryId))
+    .limit(1);
+
+  if (!entryRow) {
+    throw new ServiceError("NOT_FOUND", `Entry "${entryId}" not found`);
+  }
+
+  const snapshot = await getPublishedSchemaOrThrow(entryRow.catalogId);
+
+  const linkRows = await db
+    .select()
+    .from(catalogEntryRelationshipsTable)
+    .where(
+      or(
+        eq(catalogEntryRelationshipsTable.fromEntryId, entryId),
+        eq(catalogEntryRelationshipsTable.toEntryId, entryId),
+      ),
+    );
+
+  const allEntryIds = new Set<string>();
+  for (const row of linkRows) {
+    allEntryIds.add(row.fromEntryId);
+    allEntryIds.add(row.toEntryId);
+  }
+
+  let entryNameMap = new Map<string, { displayName: string; templateId: string }>();
+  if (allEntryIds.size > 0) {
+    const entryIds = Array.from(allEntryIds);
+    const entryRows = await db
+      .select({
+        id: catalogEntriesTable.id,
+        displayName: catalogEntriesTable.displayName,
+        templateId: catalogEntriesTable.templateId,
+      })
+      .from(catalogEntriesTable)
+      .where(sql`${catalogEntriesTable.id} IN (${sql.join(entryIds.map((id) => sql`${id}::uuid`), sql`, `)})`);
+    entryNameMap = new Map(
+      entryRows.map((r) => [r.id, { displayName: r.displayName ?? `Untitled #${r.id.substring(0, 8)}`, templateId: r.templateId }]),
+    );
+  }
+
+  const results: EntryLinkInstance[] = [];
+  for (const row of linkRows) {
+    const relDef = findRelationshipInSnapshot(snapshot, row.relationshipId);
+    if (!relDef) continue;
+
+    const isFrom = row.fromEntryId === entryId;
+    const otherEntryId = isFrom ? row.toEntryId : row.fromEntryId;
+    const otherEntry = entryNameMap.get(otherEntryId);
+    const fromEntry = entryNameMap.get(row.fromEntryId);
+
+    const toTemplate = snapshot.templates.find((t) => t.id === relDef.toTemplateId);
+
+    results.push({
+      id: row.id,
+      relationshipId: row.relationshipId,
+      relationshipLabel: relDef.label,
+      cardinality: relDef.cardinality,
+      direction: isFrom ? "from" : "to",
+      fromEntryId: row.fromEntryId,
+      fromEntryName: fromEntry?.displayName ?? `Untitled #${row.fromEntryId.substring(0, 8)}`,
+      fromTemplateId: relDef.fromTemplateId,
+      toEntryId: row.toEntryId,
+      toEntryName: entryNameMap.get(row.toEntryId)?.displayName ?? `Untitled #${row.toEntryId.substring(0, 8)}`,
+      toTemplateId: relDef.toTemplateId,
+      toTemplateName: toTemplate?.name ?? "",
+      createdAt: row.createdAt.toISOString(),
+    });
+  }
+
+  return results;
+}
+
+export async function linkEntries(input: LinkEntriesInput): Promise<EntryLinkInstance> {
+  const db = getDb();
+
+  const [fromRow] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId, templateId: catalogEntriesTable.templateId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, input.fromEntryId))
+    .limit(1);
+
+  if (!fromRow) {
+    throw new ServiceError("NOT_FOUND", `Source entry "${input.fromEntryId}" not found`);
+  }
+
+  const [toRow] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId, templateId: catalogEntriesTable.templateId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, input.toEntryId))
+    .limit(1);
+
+  if (!toRow) {
+    throw new ServiceError("NOT_FOUND", `Target entry "${input.toEntryId}" not found`);
+  }
+
+  const snapshot = await getPublishedSchemaOrThrow(fromRow.catalogId);
+  const relDef = findRelationshipInSnapshot(snapshot, input.relationshipId);
+
+  if (!relDef) {
+    throw new ServiceError("NOT_FOUND", `Relationship definition "${input.relationshipId}" not found in published schema`);
+  }
+
+  if (fromRow.templateId !== relDef.fromTemplateId) {
+    throw new ServiceError("VALIDATION_ERROR", `Source entry template does not match relationship fromTemplateId`);
+  }
+
+  if (toRow.templateId !== relDef.toTemplateId) {
+    throw new ServiceError("VALIDATION_ERROR", `Target entry template does not match relationship toTemplateId`);
+  }
+
+  if (relDef.cardinality === "1:1") {
+    const existingFrom = await db
+      .select({ id: catalogEntryRelationshipsTable.id })
+      .from(catalogEntryRelationshipsTable)
+      .where(
+        and(
+          eq(catalogEntryRelationshipsTable.fromEntryId, input.fromEntryId),
+          eq(catalogEntryRelationshipsTable.relationshipId, input.relationshipId),
+        ),
+      )
+      .limit(1);
+    if (existingFrom.length > 0) {
+      throw new ServiceError("CONFLICT", `This relationship only allows one link. Remove the existing link first.`);
+    }
+    const existingTo = await db
+      .select({ id: catalogEntryRelationshipsTable.id })
+      .from(catalogEntryRelationshipsTable)
+      .where(
+        and(
+          eq(catalogEntryRelationshipsTable.toEntryId, input.toEntryId),
+          eq(catalogEntryRelationshipsTable.relationshipId, input.relationshipId),
+        ),
+      )
+      .limit(1);
+    if (existingTo.length > 0) {
+      throw new ServiceError("CONFLICT", `This relationship only allows one link. Remove the existing link first.`);
+    }
+  } else if (relDef.cardinality === "1:N") {
+    const existingTo = await db
+      .select({ id: catalogEntryRelationshipsTable.id })
+      .from(catalogEntryRelationshipsTable)
+      .where(
+        and(
+          eq(catalogEntryRelationshipsTable.toEntryId, input.toEntryId),
+          eq(catalogEntryRelationshipsTable.relationshipId, input.relationshipId),
+        ),
+      )
+      .limit(1);
+    if (existingTo.length > 0) {
+      throw new ServiceError(
+        "CONFLICT",
+        `This entry is already linked from another ${relDef.label}. Remove that link first.`,
+      );
+    }
+  }
+
+  const [inserted] = await db
+    .insert(catalogEntryRelationshipsTable)
+    .values({
+      fromEntryId: input.fromEntryId,
+      toEntryId: input.toEntryId,
+      relationshipId: input.relationshipId,
+    })
+    .returning();
+
+  if (!inserted) {
+    throw new ServiceError("CONFLICT", `These entries are already linked via ${relDef.label}.`);
+  }
+
+  const fromEntry = await db
+    .select({ displayName: catalogEntriesTable.displayName })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, input.fromEntryId))
+    .limit(1);
+  const toEntry = await db
+    .select({ displayName: catalogEntriesTable.displayName, templateId: catalogEntriesTable.templateId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, input.toEntryId))
+    .limit(1);
+
+  const toTemplate = snapshot.templates.find((t) => t.id === relDef.toTemplateId);
+
+  return {
+    id: inserted.id,
+    relationshipId: inserted.relationshipId,
+    relationshipLabel: relDef.label,
+    cardinality: relDef.cardinality,
+    direction: "from",
+    fromEntryId: inserted.fromEntryId,
+    fromEntryName: fromEntry[0]?.displayName ?? `Untitled #${input.fromEntryId.substring(0, 8)}`,
+    fromTemplateId: relDef.fromTemplateId,
+    toEntryId: inserted.toEntryId,
+    toEntryName: toEntry[0]?.displayName ?? `Untitled #${input.toEntryId.substring(0, 8)}`,
+    toTemplateId: relDef.toTemplateId,
+    toTemplateName: toTemplate?.name ?? "",
+    createdAt: inserted.createdAt.toISOString(),
+  };
+}
+
+export async function unlinkEntries(linkId: string): Promise<void> {
+  const db = getDb();
+
+  const [linkRow] = await db
+    .select()
+    .from(catalogEntryRelationshipsTable)
+    .where(eq(catalogEntryRelationshipsTable.id, linkId))
+    .limit(1);
+
+  if (!linkRow) {
+    throw new ServiceError("NOT_FOUND", `Link "${linkId}" not found`);
+  }
+
+  const [fromEntry] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, linkRow.fromEntryId))
+    .limit(1);
+
+  if (fromEntry) {
+    const [catalogRow] = await db
+      .select({ status: catalogsTable.status })
+      .from(catalogsTable)
+      .where(eq(catalogsTable.id, fromEntry.catalogId))
+      .limit(1);
+
+    if (catalogRow?.status === "discontinued") {
+      throw new ServiceError("CATALOG_LOCKED", "This catalog is discontinued. Links cannot be removed.");
+    }
+  }
+
+  await db
+    .delete(catalogEntryRelationshipsTable)
+    .where(eq(catalogEntryRelationshipsTable.id, linkId));
 }
 
 export async function searchEntries(

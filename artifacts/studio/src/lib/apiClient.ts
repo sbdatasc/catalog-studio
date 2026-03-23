@@ -138,11 +138,11 @@ export interface SnapshotSection {
 
 export interface SnapshotRelationship {
   id: string;
+  fromTemplateId: string;
+  toTemplateId: string;
   label: string;
   cardinality: "1:1" | "1:N" | "M:N";
   direction: "from" | "to" | "both";
-  targetTemplateId: string;
-  targetTemplateName: string;
 }
 
 export interface SnapshotTemplate {
@@ -217,6 +217,22 @@ export interface CreateEntryInput {
 
 export interface UpdateEntryInput {
   fieldValues: Array<{ attributeId: string; value: string | null }>;
+}
+
+export interface EntryLinkInstance {
+  id: string;
+  relationshipId: string;
+  relationshipLabel: string;
+  cardinality: "1:1" | "1:N" | "M:N";
+  direction: "from" | "to" | "both";
+  fromEntryId: string;
+  fromEntryName: string;
+  fromTemplateId: string;
+  toEntryId: string;
+  toEntryName: string;
+  toTemplateId: string;
+  toTemplateName: string;
+  createdAt: string;
 }
 
 export interface PaginatedEntries {
@@ -458,5 +474,17 @@ export const apiClient = {
       fetchApi<{ deleted: true }>(`/entries/${encodeURIComponent(id)}`, {
         method: "DELETE",
       }),
+    getLinks: (entryId: string) =>
+      fetchApi<EntryLinkInstance[]>(`/entries/${encodeURIComponent(entryId)}/relationships`),
+    link: (entryId: string, body: { relationshipId: string; toEntryId: string }) =>
+      fetchApi<EntryLinkInstance>(`/entries/${encodeURIComponent(entryId)}/relationships`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    unlink: (entryId: string, linkId: string) =>
+      fetchApi<{ deleted: true }>(
+        `/entries/${encodeURIComponent(entryId)}/relationships/${encodeURIComponent(linkId)}`,
+        { method: "DELETE" },
+      ),
   },
 };

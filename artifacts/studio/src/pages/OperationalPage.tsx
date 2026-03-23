@@ -304,6 +304,7 @@ export function OperationalPage({ catalogId }: Props) {
                   loadingMore={activeEntriesLoading}
                   onLoadMore={() => loadMoreEntries(catalogId, activeTemplateTabId!)}
                   onEdit={handleEdit}
+                  snapshot={snapshot ?? undefined}
                 />
               ) : (
                 <EntryTableView

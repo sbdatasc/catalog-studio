@@ -25,6 +25,11 @@ const UpdateEntryBody = z.object({
   fieldValues: z.array(FieldValueInput),
 });
 
+const LinkEntryBody = z.object({
+  relationshipId: z.string().uuid("relationshipId must be a valid UUID"),
+  toEntryId: z.string().uuid("toEntryId must be a valid UUID"),
+});
+
 const ListEntriesQuery = z.object({
   catalogId: z.string().uuid("catalogId must be a valid UUID"),
   templateId: z.string().uuid("templateId must be a valid UUID"),
@@ -77,6 +82,11 @@ function handleServiceError(res: Parameters<typeof sendError>[0], err: unknown):
       case "CATALOG_LOCKED":
         sendError(res, 403, "FORBIDDEN" as never, err.message, {
           details: { code: "CATALOG_LOCKED" },
+        });
+        return;
+      case "CONFLICT":
+        sendError(res, 409, "CONFLICT" as never, err.message, {
+          details: { code: "CONFLICT" },
         });
         return;
       case "UNPROCESSABLE":
@@ -184,6 +194,54 @@ router.patch("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     await entryService.deleteEntry(req.params.id);
+    sendSuccess(res, { deleted: true });
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/entries/:id/relationships — O-03
+// ---------------------------------------------------------------------------
+
+router.get("/:id/relationships", async (req, res) => {
+  try {
+    const links = await entryService.getLinkedEntries(req.params.id);
+    sendSuccess(res, links);
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/entries/:id/relationships — O-03
+// ---------------------------------------------------------------------------
+
+router.post("/:id/relationships", async (req, res) => {
+  const parsed = LinkEntryBody.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
+  }
+
+  try {
+    const link = await entryService.linkEntries({
+      fromEntryId: req.params.id,
+      toEntryId: parsed.data.toEntryId,
+      relationshipId: parsed.data.relationshipId,
+    });
+    sendSuccess(res, link, { status: 201 });
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/entries/:id/relationships/:linkId — O-03
+// ---------------------------------------------------------------------------
+
+router.delete("/:id/relationships/:linkId", async (req, res) => {
+  try {
+    await entryService.unlinkEntries(req.params.linkId);
     sendSuccess(res, { deleted: true });
   } catch (err) {
     handleServiceError(res, err);

@@ -202,6 +202,46 @@ Use `sendSuccess` and `sendError` from `artifacts/api-server/src/lib/response.ts
 - `artifacts/studio/src/pages/PublishPage.tsx` — full page at `/catalogs/:id/designer/publish`; contains: pre-publish checklist with Fix links, Publish button, confirm modal, version history list, diff panel
 - `artifacts/studio/src/components/DesignerNav.tsx` — Publish tab is now a real Link (was disabled)
 
+## O-03 Relationship Instance Linking
+
+### Backend
+
+- `entryService.ts` — `getLinkedEntries(entryId)`, `linkEntries(input)`, `unlinkEntries(linkId)` with cardinality enforcement (1:1, 1:N, M:N)
+- `routes/entries.ts` — `GET /api/entries/:id/relationships`, `POST /api/entries/:id/relationships`, `DELETE /api/entries/:id/relationships/:linkId`; CONFLICT error for duplicate/cardinality violations; CATALOG_LOCKED error on unlink of discontinued catalog
+- `EntryLinkInstance` interface now includes `fromTemplateId` for bidirectional navigation
+
+### Frontend Store
+
+- `entryStore.ts` — `linksByEntry`, `linksLoading`, `fetchLinks`, `addLink`, `removeLink`
+- `uiStore.ts` — `linkModeActive`, `linkModeSourceEntryId`, `startLinkMode`, `endLinkMode`; `relationshipLinkDrawerOpen`, `relationshipLinkDrawerRelId`, `openRelationshipLinkDrawer`, `closeRelationshipLinkDrawer`
+
+### Frontend Utility
+
+- `utils/getCompatibleTemplateIds.ts` — pure function: given `sourceTemplateId` + `SchemaSnapshot`, returns all templateIds reachable via any relationship (from either side)
+
+### Frontend Components
+
+- `EntryLinkChip` — chip displaying a linked entry name (clickable to navigate) + X button to unlink
+- `UnlinkConfirmModal` — Dialog confirming removal; shows entry names + relationship label
+- `RelationshipSubsection` — collapsible panel per relationship type; wraps chips + "Add Link" button
+- `RelatedEntriesSection` — inline relationship surface (rendered when template has 1–2 rel types)
+- `RelationshipsTab` — tab-based surface (rendered when template has ≥3 rel types); two-column layout with sidebar navigation
+- `RelationshipLinkDrawer` — Sheet from the right; typeahead search (min 2 chars); handles both "from" and "to" sides of a relationship; CONFLICT error display
+- `CardLinkHandle` — draggable circular handle at bottom-center of EntryCard on hover
+- `LinkModeOverlay` — fixed overlay with instruction banner + ESC cancel button during drag-to-link
+- `RelationshipSelectionDialog` — Dialog shown after drag-drop to select relationship type before confirming link
+
+### EntryDetailPage Threshold Logic
+
+- `template.relationships.length === 0` → no relationship surface
+- `1 ≤ length ≤ 2` → inline `RelatedEntriesSection` below field sections
+- `length ≥ 3` → "Details" / "Relationships" tab bar; tab layout with `RelationshipsTab`
+
+### EntryCard + EntryCardGrid Drag-to-Link
+
+- `EntryCard` — accepts `isInLinkMode`, `isLinkSource`, `isCompatibleTarget`, `onLinkDragStart`, `onDropLink` props; renders `CardLinkHandle` on hover; visual states (blue border for source, green for compatible, dimmed for incompatible)
+- `EntryCardGrid` — orchestrates drag-to-link: tracks source entry, computes compatible templates via `getCompatibleTemplateIds`, shows `LinkModeOverlay`, opens `RelationshipSelectionDialog` on drop; ESC key cancels link mode
+
 ## Database Architecture (v2 — Catalog Layer)
 
 ### Schema Hierarchy

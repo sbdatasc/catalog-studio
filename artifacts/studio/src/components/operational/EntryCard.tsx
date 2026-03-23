@@ -8,6 +8,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { DeleteEntryModal } from "./DeleteEntryModal";
+import { CardLinkHandle } from "./CardLinkHandle";
 import type { EntryListItem, SnapshotTemplate } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,11 @@ interface Props {
   catalogStatus?: string;
   hasIncomplete: boolean;
   onEdit: (entryId: string) => void;
+  isInLinkMode?: boolean;
+  isLinkSource?: boolean;
+  isCompatibleTarget?: boolean;
+  onLinkDragStart?: (e: React.DragEvent, entry: EntryListItem) => void;
+  onDropLink?: (entry: EntryListItem) => void;
 }
 
 function formatRelativeDate(iso: string): string {
@@ -35,16 +41,51 @@ function formatRelativeDate(iso: string): string {
   }
 }
 
-export function EntryCard({ entry, template, catalogId, catalogStatus, hasIncomplete, onEdit }: Props) {
+export function EntryCard({
+  entry,
+  template,
+  catalogId,
+  catalogStatus,
+  hasIncomplete,
+  onEdit,
+  isInLinkMode = false,
+  isLinkSource = false,
+  isCompatibleTarget = false,
+  onLinkDragStart,
+  onDropLink,
+}: Props) {
   const [, navigate] = useLocation();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const detailPath = `/catalogs/${catalogId}/operational/${template.id}/entries/${entry.id}`;
 
+  const hasRelationships = template.relationships.length > 0;
+  const isDiscontinued = catalogStatus === "discontinued";
+  const canShowLinkHandle = hasRelationships && !isDiscontinued && !isInLinkMode;
+
   function handleCardClick(e: React.MouseEvent) {
+    if (isInLinkMode) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-no-navigate]")) return;
     navigate(detailPath);
+  }
+
+  function handleDragOver(e: React.DragEvent) {
+    if (!isInLinkMode || isLinkSource || !isCompatibleTarget) return;
+    e.preventDefault();
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (!isInLinkMode || isLinkSource || !isCompatibleTarget) return;
+    onDropLink?.(entry);
   }
 
   const previewAttrs = template.sections
@@ -57,6 +98,18 @@ export function EntryCard({ entry, template, catalogId, catalogStatus, hasIncomp
         .filter((a) => a.attributeType !== "boolean"),
     )
     .slice(0, 3);
+
+  const borderClass = isLinkSource
+    ? "border-primary ring-2 ring-primary/40"
+    : isDragOver && isCompatibleTarget
+      ? "border-green-500 ring-2 ring-green-400/40"
+      : isInLinkMode && isCompatibleTarget
+        ? "border-green-300"
+        : isInLinkMode && !isCompatibleTarget && !isLinkSource
+          ? "border-border opacity-40"
+          : hasIncomplete
+            ? "border-amber-300"
+            : "border-border";
 
   return (
     <>
@@ -71,13 +124,21 @@ export function EntryCard({ entry, template, catalogId, catalogStatus, hasIncomp
 
       <div
         className={cn(
-          "group relative bg-card border rounded-xl p-4 cursor-pointer hover:border-primary/40 hover:shadow-sm transition-all",
-          hasIncomplete ? "border-amber-300" : "border-border",
+          "group relative bg-card border rounded-xl p-4 transition-all",
+          isInLinkMode && isCompatibleTarget && !isLinkSource
+            ? "cursor-copy"
+            : isInLinkMode && !isCompatibleTarget && !isLinkSource
+              ? "cursor-not-allowed"
+              : "cursor-pointer hover:border-primary/40 hover:shadow-sm",
+          borderClass,
         )}
         onClick={handleCardClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         data-testid="entry-card"
       >
-        {hasIncomplete && (
+        {hasIncomplete && !isInLinkMode && (
           <div className="absolute top-3 left-3" data-no-navigate>
             <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
               <AlertCircle className="w-3 h-3" />
@@ -94,31 +155,33 @@ export function EntryCard({ entry, template, catalogId, catalogStatus, hasIncomp
             <p className="text-xs text-muted-foreground mt-0.5">{template.name}</p>
           </div>
 
-          <div data-no-navigate>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                  aria-label="Entry options"
-                >
-                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onEdit(entry.id)}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Edit
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+          {!isInLinkMode && (
+            <div data-no-navigate>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                    aria-label="Entry options"
+                  >
+                    <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => onEdit(entry.id)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          )}
         </div>
 
         {previewAttrs.length > 0 && (
@@ -136,6 +199,12 @@ export function EntryCard({ entry, template, catalogId, catalogStatus, hasIncomp
           <span>Created {formatRelativeDate(entry.createdAt)}</span>
           <span>Updated {formatRelativeDate(entry.updatedAt)}</span>
         </div>
+
+        {canShowLinkHandle && onLinkDragStart && (
+          <div data-no-navigate className="opacity-0 group-hover:opacity-100 transition-opacity">
+            <CardLinkHandle onDragStart={(e) => onLinkDragStart(e, entry)} />
+          </div>
+        )}
       </div>
     </>
   );

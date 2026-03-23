@@ -13,6 +13,8 @@ import { AttributeDisplay } from "@/components/operational/AttributeDisplay";
 import { SchemaMismatchBanner } from "@/components/operational/SchemaMismatchBanner";
 import { UnsavedEntryGuard } from "@/components/operational/UnsavedEntryGuard";
 import { DeleteEntryModal } from "@/components/operational/DeleteEntryModal";
+import { RelatedEntriesSection } from "@/components/operational/RelatedEntriesSection";
+import { RelationshipsTab } from "@/components/operational/RelationshipsTab";
 
 interface Props {
   catalogId: string;
@@ -21,6 +23,7 @@ interface Props {
 }
 
 type PageMode = "loading" | "read" | "editing" | "saving" | "error" | "not-found";
+type ActiveTab = "details" | "relationships";
 
 export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
   const { toast } = useToast();
@@ -31,7 +34,6 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
   const activeEntryError = useEntryStore((s) => s.activeEntryError);
   const fetchEntry = useEntryStore((s) => s.fetchEntry);
   const updateEntryInStore = useEntryStore((s) => s.updateEntry);
-  const removeEntry = useEntryStore((s) => s.removeEntry);
 
   const publishedSchemasByCatalog = useSchemaStore((s) => s.publishedSchemasByCatalog);
   const publishedVersionIdByCatalog = useSchemaStore((s) => s.publishedVersionIdByCatalog);
@@ -40,6 +42,7 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
   const setActiveCatalog = useUiStore((s) => s.setActiveCatalog);
 
   const [mode, setMode] = useState<PageMode>("loading");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("details");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string | null>>({});
   const [formDisplayValues, setFormDisplayValues] = useState<Record<string, string | null>>({});
@@ -106,6 +109,14 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
     return activeEntry.schemaVersionId !== currentVersionId;
   }, [activeEntry, currentVersionId]);
 
+  const relationships = template?.relationships ?? [];
+  const relCount = relationships.length;
+  const useTabLayout = relCount >= 3;
+  const useInlineLayout = relCount >= 1 && relCount < 3;
+
+  const catalogStatus = snapshot?.templates.length ? "published" : undefined;
+  const isDiscontinued = false;
+
   function enterEditMode() {
     if (!activeEntry) return;
     const init: Record<string, string | null> = {};
@@ -125,6 +136,7 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
     setFormErrors({});
     setSaveError(null);
     setMode("editing");
+    setActiveTab("details");
   }
 
   const isDirty = useMemo(() => {
@@ -366,6 +378,35 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
           )}
         </div>
 
+        {/* Tab bar — only when ≥3 relationship types */}
+        {!isEditing && useTabLayout && (
+          <div className="flex border-b border-border bg-background px-6 gap-4 flex-shrink-0">
+            <button
+              className={`py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === "details"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab("details")}
+            >
+              Details
+            </button>
+            <button
+              className={`py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-1.5 ${
+                activeTab === "relationships"
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setActiveTab("relationships")}
+            >
+              Relationships
+              {relCount > 0 && (
+                <span className="text-xs bg-muted rounded-full px-1.5 py-0.5">{relCount}</span>
+              )}
+            </button>
+          </div>
+        )}
+
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           {isSchemaMismatch && <SchemaMismatchBanner />}
@@ -377,33 +418,62 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
             </div>
           )}
 
-          {sortedSections.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground">
-              <p className="text-sm">No sections in this template.</p>
-            </div>
-          ) : isEditing ? (
-            sortedSections.map((section) => (
-              <SectionAccordion
-                key={section.id}
-                catalogId={catalogId}
-                section={section}
-                formValues={formValues}
-                formDisplayValues={formDisplayValues}
-                formErrors={formErrors}
-                onFieldChange={handleFieldChange}
-                disabled={mode === "saving"}
-                targetTemplateNames={targetTemplateNames}
-              />
-            ))
-          ) : (
-            sortedSections.map((section) => (
-              <ReadOnlySection
-                key={section.id}
-                section={section}
-                entry={activeEntry}
-                catalogId={catalogId}
-              />
-            ))
+          {/* Tab: Relationships (≥3 rel types) */}
+          {!isEditing && useTabLayout && activeTab === "relationships" && (
+            <RelationshipsTab
+              entryId={entryId}
+              entryName={activeEntry.displayName}
+              templateId={templateId}
+              catalogId={catalogId}
+              relationships={relationships}
+              isDiscontinued={isDiscontinued}
+            />
+          )}
+
+          {/* Details content */}
+          {(!useTabLayout || isEditing || activeTab === "details") && (
+            <>
+              {sortedSections.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <p className="text-sm">No sections in this template.</p>
+                </div>
+              ) : isEditing ? (
+                sortedSections.map((section) => (
+                  <SectionAccordion
+                    key={section.id}
+                    catalogId={catalogId}
+                    section={section}
+                    formValues={formValues}
+                    formDisplayValues={formDisplayValues}
+                    formErrors={formErrors}
+                    onFieldChange={handleFieldChange}
+                    disabled={mode === "saving"}
+                    targetTemplateNames={targetTemplateNames}
+                  />
+                ))
+              ) : (
+                sortedSections.map((section) => (
+                  <ReadOnlySection
+                    key={section.id}
+                    section={section}
+                    entry={activeEntry}
+                    catalogId={catalogId}
+                  />
+                ))
+              )}
+
+              {/* Inline relationship surface (1–2 rel types) */}
+              {!isEditing && useInlineLayout && (
+                <RelatedEntriesSection
+                  entryId={entryId}
+                  entryName={activeEntry.displayName}
+                  templateId={templateId}
+                  catalogId={catalogId}
+                  relationships={relationships}
+                  isDiscontinued={isDiscontinued}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
