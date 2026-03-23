@@ -3,6 +3,7 @@ import { Loader2, AlertCircle, Plus, X, Link2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useEntryStore } from "@/stores/entryStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { RelationshipLinkDrawer } from "./RelationshipLinkDrawer";
 import { UnlinkConfirmModal } from "./UnlinkConfirmModal";
 import type { EntryLinkInstance, SnapshotRelationship } from "@/lib/apiClient";
@@ -25,6 +26,7 @@ export function RelationshipsTab({
   isDiscontinued,
 }: Props) {
   const [, navigate] = useLocation();
+  const { canLinkEntries } = usePermissions(catalogId);
   const linksByEntry = useEntryStore((s) => s.linksByEntry);
   const linksLoading = useEntryStore((s) => s.linksLoading);
   const fetchLinks = useEntryStore((s) => s.fetchLinks);
@@ -100,7 +102,7 @@ export function RelationshipsTab({
                 <h4 className="font-medium text-sm text-foreground">{selectedRel.label}</h4>
                 <p className="text-xs text-muted-foreground">{selectedRel.cardinality}</p>
               </div>
-              {!isDiscontinued && (
+              {!isDiscontinued && canLinkEntries && (
                 <Button
                   size="sm"
                   variant="outline"
@@ -152,7 +154,7 @@ export function RelationshipsTab({
                         <span className="text-xs text-muted-foreground">
                           {new Date(link.createdAt).toLocaleDateString()}
                         </span>
-                        {!isDiscontinued && (
+                        {!isDiscontinued && canLinkEntries && (
                           <button
                             className="p-1 rounded hover:bg-destructive/10 hover:text-destructive text-muted-foreground transition-colors"
                             onClick={() => setUnlinkTarget(link)}

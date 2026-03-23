@@ -7,6 +7,7 @@ import { DeleteConfirmModal } from "./DeleteConfirmModal";
 import { UnsavedChangesGuard } from "./UnsavedChangesGuard";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface Props {
   catalogId: string;
@@ -15,6 +16,7 @@ interface Props {
 export function EntityTypeManager({ catalogId }: Props) {
   const { fetchTemplates, templates, templatesLoading, templatesError } = useSchemaStore();
   const { openCreateDrawer } = useUiStore();
+  const { canEditSchema } = usePermissions(catalogId);
 
   useEffect(() => {
     fetchTemplates(catalogId);
@@ -34,14 +36,16 @@ export function EntityTypeManager({ catalogId }: Props) {
             </p>
           </div>
 
-          <Button
-            onClick={() => openCreateDrawer({ isReferenceData: false })}
-            className="shadow-md shadow-primary/10 hover:-translate-y-0.5 transition-transform"
-            data-testid="button-new-template"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Template
-          </Button>
+          {canEditSchema && (
+            <Button
+              onClick={() => openCreateDrawer({ isReferenceData: false })}
+              className="shadow-md shadow-primary/10 hover:-translate-y-0.5 transition-transform"
+              data-testid="button-new-template"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Template
+            </Button>
+          )}
         </div>
 
         <EntityTypeGrid
@@ -50,7 +54,7 @@ export function EntityTypeManager({ catalogId }: Props) {
           error={templatesError}
           onRetry={() => fetchTemplates(catalogId)}
           emptyMessage="Templates define the structure of the data assets in your catalog. Get started by creating your first template."
-          onCreateNew={() => openCreateDrawer({ isReferenceData: false })}
+          onCreateNew={canEditSchema ? () => openCreateDrawer({ isReferenceData: false }) : undefined}
         />
 
       </div>

@@ -44,7 +44,7 @@ export const useCatalogStore = create<CatalogStore>((set) => ({
     if (data) {
       const roles: Record<string, CatalogRole | "platform_admin"> = {};
       for (const c of data) {
-        roles[c.id] = c.catalogRole;
+        roles[c.catalog.id] = c.catalogRole;
       }
       set({ myRoles: roles, myRolesLoading: false });
     } else {

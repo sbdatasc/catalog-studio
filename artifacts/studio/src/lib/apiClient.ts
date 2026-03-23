@@ -265,14 +265,16 @@ export interface EligibleUser {
 }
 
 export interface CatalogWithRole {
-  id: string;
-  name: string;
-  description: string | null;
-  status: CatalogStatus;
-  templateCount: number;
-  createdAt: string;
-  updatedAt: string;
-  catalogRole: CatalogRole;
+  catalog: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: CatalogStatus;
+    templateCount: number;
+    createdAt: string;
+    updatedAt: string;
+  };
+  catalogRole: CatalogRole | "platform_admin";
 }
 
 // ---------------------------------------------------------------------------

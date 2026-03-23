@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { CheckCircle2, XCircle, Loader2, ArrowRight, Clock, ChevronDown, ChevronRight, GitBranch, Plus, Minus, Edit2 } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, ArrowRight, Clock, ChevronDown, ChevronRight, GitBranch, Plus, Minus, Edit2, UserCheck } from "lucide-react";
 import { DesignerNav } from "@/components/DesignerNav";
 import { usePublishStore } from "@/stores/publishStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { SchemaVersion, SchemaDiff, ChecklistCheck } from "@/lib/apiClient";
 
 // ---------------------------------------------------------------------------
@@ -307,6 +308,14 @@ export function PublishPage({ catalogId }: { catalogId: string }) {
     reset,
   } = usePublishStore();
 
+  const { canPublishSchema, role } = usePermissions(catalogId);
+
+  useEffect(() => {
+    if (role === "api_consumer") {
+      navigate(`/catalogs/${catalogId}/graphql`, { replace: true });
+    }
+  }, [role, catalogId, navigate]);
+
   useEffect(() => {
     reset();
     fetchChecklist(catalogId);
@@ -352,6 +361,17 @@ export function PublishPage({ catalogId }: { catalogId: string }) {
               )}
             </div>
 
+            {/* Role lock banner for non-publishers */}
+            {!canPublishSchema && (
+              <div className="flex items-center gap-3 px-5 py-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-300">
+                <UserCheck className="w-4 h-4 shrink-0" />
+                <p className="text-sm">
+                  <span className="font-medium capitalize">Your role on this catalog is {role ?? "unknown"}.</span>{" "}
+                  You have read-only access to Designer Mode.
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
               {/* Left: Checklist + Publish button */}
@@ -376,25 +396,27 @@ export function PublishPage({ catalogId }: { catalogId: string }) {
                   </div>
                 </div>
 
-                <button
-                  disabled={!allPassing || publishing || checklistLoading}
-                  onClick={() => setConfirmOpen(true)}
-                  data-testid="publish-btn"
-                  className={[
-                    "w-full px-5 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2",
-                    allPassing && !publishing && !checklistLoading
-                      ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
-                      : "bg-muted text-muted-foreground cursor-not-allowed",
-                  ].join(" ")}
-                >
-                  {publishing ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Publishing…
-                    </>
-                  ) : (
-                    "Publish Schema"
-                  )}
-                </button>
+                {canPublishSchema && (
+                  <button
+                    disabled={!allPassing || publishing || checklistLoading}
+                    onClick={() => setConfirmOpen(true)}
+                    data-testid="publish-btn"
+                    className={[
+                      "w-full px-5 py-3 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2",
+                      allPassing && !publishing && !checklistLoading
+                        ? "bg-primary text-primary-foreground hover:bg-primary/90 shadow-md"
+                        : "bg-muted text-muted-foreground cursor-not-allowed",
+                    ].join(" ")}
+                  >
+                    {publishing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Publishing…
+                      </>
+                    ) : (
+                      "Publish Schema"
+                    )}
+                  </button>
+                )}
 
                 {publishError && !confirmOpen && (
                   <div className="rounded-lg bg-destructive/10 border border-destructive/20 px-4 py-3 text-sm text-destructive">

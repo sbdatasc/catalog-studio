@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Link } from "wouter";
-import { Plus, ChevronRight, Lock } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { Plus, ChevronRight, Lock, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SectionList } from "./SectionList";
@@ -13,6 +13,7 @@ import { RelationshipDrawer } from "@/components/designer/relationships/Relation
 import { DeleteRelationshipModal } from "@/components/designer/relationships/DeleteRelationshipModal";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { apiClient, type CatalogTemplate, type Section, type AttributeDefinition } from "@/lib/apiClient";
 
 interface Props {
@@ -25,6 +26,8 @@ interface Props {
 type PageTab = "sections" | "relationships";
 
 export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props) {
+  const [, navigate] = useLocation();
+
   const {
     sectionsByTemplate,
     sectionsLoading,
@@ -43,6 +46,8 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
     openEditSectionDrawer,
   } = useUiStore();
 
+  const { canEditSchema, canManageCatalog, role } = usePermissions(catalogId);
+
   const [template, setTemplate] = useState<CatalogTemplate | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<PageTab>("sections");
@@ -51,7 +56,16 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
   const [deleteSectionTarget, setDeleteSectionTarget] = useState<Section | null>(null);
   const [deleteAttrTarget, setDeleteAttrTarget] = useState<AttributeDefinition | null>(null);
 
-  const isCatalogLocked = activeCatalogStatus !== null && activeCatalogStatus !== "draft";
+  const statusLocked = activeCatalogStatus !== null && activeCatalogStatus !== "draft";
+  const roleLocked = !canEditSchema;
+  const isCatalogLocked = statusLocked || roleLocked;
+
+  // API Consumer redirect
+  useEffect(() => {
+    if (role === "api_consumer") {
+      navigate(`/catalogs/${catalogId}/graphql`, { replace: true });
+    }
+  }, [role, catalogId, navigate]);
 
   // -------------------------------------------------------------------------
   // Load catalog + template + sections on mount
@@ -123,27 +137,40 @@ export function TemplateDetailPage({ catalogId, templateId, tabContext }: Props)
             )}
           </nav>
 
-          {/* Catalog lock banner */}
-          {isCatalogLocked && (
+          {/* Status lock banner */}
+          {statusLocked && (
             <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-300">
               <Lock className="w-4 h-4 shrink-0" />
               <div className="flex-1 text-sm">
-                <span className="font-medium">This catalog is locked.</span>{" "}
-                Schema editing is disabled. Duplicate the catalog to make changes.
+                <span className="font-medium">This catalog is locked for editing.</span>{" "}
+                Duplicate it to make changes.
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-amber-700 border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700"
-                onClick={async () => {
-                  const { data } = await apiClient.catalogs.duplicate(catalogId);
-                  if (data) {
-                    window.location.href = `/catalogs/${data.id}/designer/${tabContext}/${templateId}`;
-                  }
-                }}
-              >
-                Duplicate Catalog
-              </Button>
+              {canManageCatalog && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-amber-700 border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700"
+                  onClick={async () => {
+                    const { data } = await apiClient.catalogs.duplicate(catalogId);
+                    if (data) {
+                      window.location.href = `/catalogs/${data.id}/designer/${tabContext}/${templateId}`;
+                    }
+                  }}
+                >
+                  Duplicate Catalog
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Role lock banner (only shown when status is draft but role is insufficient) */}
+          {!statusLocked && roleLocked && (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-300">
+              <UserCheck className="w-4 h-4 shrink-0" />
+              <p className="text-sm">
+                <span className="font-medium capitalize">Your role on this catalog is {role ?? "unknown"}.</span>{" "}
+                You have read-only access to Designer Mode.
+              </p>
             </div>
           )}
 

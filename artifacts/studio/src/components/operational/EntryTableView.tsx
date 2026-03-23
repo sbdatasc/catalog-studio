@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DeleteEntryModal } from "./DeleteEntryModal";
 import { PaginationControls } from "./PaginationControls";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { EntryListItem, SnapshotTemplate, SnapshotAttribute } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
@@ -58,6 +59,7 @@ function TableRow({
 }) {
   const [, navigate] = useLocation();
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const { canEditEntries, canDeleteEntries } = usePermissions(catalogId);
 
   const detailPath = `/catalogs/${catalogId}/operational/${template.id}/entries/${entry.id}`;
 
@@ -92,31 +94,37 @@ function TableRow({
         <td className="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
           {formatRelativeDate(entry.updatedAt)}
         </td>
-        <td className="px-4 py-3 w-10" data-no-navigate>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
-                aria-label="Row options"
-              >
-                <MoreVertical className="w-4 h-4 text-muted-foreground" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onEdit(entry.id)}>
-                <Pencil className="w-4 h-4 mr-2" />
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </td>
+        {(canEditEntries || canDeleteEntries) && (
+          <td className="px-4 py-3 w-10" data-no-navigate>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-muted"
+                  aria-label="Row options"
+                >
+                  <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canEditEntries && (
+                  <DropdownMenuItem onClick={() => onEdit(entry.id)}>
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Edit
+                  </DropdownMenuItem>
+                )}
+                {canDeleteEntries && (
+                  <DropdownMenuItem
+                    className="text-destructive focus:text-destructive"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Delete
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </td>
+        )}
       </tr>
     </>
   );

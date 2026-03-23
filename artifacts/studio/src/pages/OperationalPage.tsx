@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Loader2, AlertCircle, Database } from "lucide-react";
+import { Loader2, AlertCircle, Database, ShieldAlert } from "lucide-react";
 import { useUiStore } from "@/stores/uiStore";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useEntryStore } from "@/stores/entryStore";
+import { useCatalogStore } from "@/stores/catalogStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { OperationalNav } from "@/components/operational/OperationalNav";
 import { NoSchemaPublishedBanner } from "@/components/operational/NoSchemaPublishedBanner";
 import { EntryForm } from "@/components/operational/EntryForm";
@@ -31,6 +33,17 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function OperationalPage({ catalogId }: Props) {
   const [, navigate] = useLocation();
+  const { role, canCreateEntries } = usePermissions(catalogId);
+
+  useEffect(() => {
+    if (role === "api_consumer") navigate(`/catalogs/${catalogId}/graphql`, { replace: true });
+  }, [role, navigate, catalogId]);
+
+  const fetchMyRoles = useCatalogStore((s) => s.fetchMyRoles);
+
+  useEffect(() => {
+    fetchMyRoles();
+  }, [fetchMyRoles]);
 
   const setActiveCatalog = useUiStore((s) => s.setActiveCatalog);
   const activeTemplateTabId = useUiStore((s) => s.activeTemplateTabId);
@@ -221,6 +234,12 @@ export function OperationalPage({ catalogId }: Props) {
       )}
 
       <div className="flex-1 overflow-hidden flex flex-col">
+        {role && role !== "api_consumer" && !canCreateEntries && (
+          <div className="shrink-0 flex items-center gap-2 px-6 py-2.5 bg-blue-50 border-b border-blue-200 text-blue-800 text-sm dark:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300">
+            <ShieldAlert className="w-4 h-4 shrink-0" />
+            You have read-only access to this catalog — entry creation, editing, and deletion are restricted.
+          </div>
+        )}
         {!snapshot ? (
           <NoSchemaPublishedBanner catalogId={catalogId} />
         ) : isEntryFormOpen && activeTemplate && snapshot ? (
@@ -290,9 +309,11 @@ export function OperationalPage({ catalogId }: Props) {
                 ) : (
                   <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
                     <p className="text-muted-foreground text-sm font-medium">No entries yet</p>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      Click "New Entry" to add the first one.
-                    </p>
+                    {canCreateEntries && (
+                      <p className="text-muted-foreground text-sm mt-1">
+                        Click "New Entry" to add the first one.
+                      </p>
+                    )}
                   </div>
                 )
               ) : viewMode === "card" ? (

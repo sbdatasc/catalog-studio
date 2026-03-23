@@ -53,6 +53,7 @@ The project is structured as a pnpm workspace monorepo.
 - **Operational Mode:** Supports full CRUD operations for catalog entries with validation against published schemas.
 - **User Authentication:** Secure JWT-based authentication with refresh tokens and role-based access for system and catalog administration.
 - **RBAC Enforcement (A-05):** `requireCatalogRole()` middleware factory enforces a 4-level role hierarchy (viewer → steward → designer → catalog_admin) on every API route. Platform admins bypass all checks. `api_consumer` receives FORBIDDEN on all REST routes. `GET /api/catalogs` is filtered per user — only returns catalogs the authenticated user has a role on.
+- **RBAC Client UI Gating (A-06):** `usePermissions(catalogId)` hook drives role-aware UI across all pages. Navigation toggles, action buttons (New Entry, Edit Entry, Delete Entry, Add Link, Unlink, New Template, Publish, etc.), kebab menus in entry cards/table rows, and role banners (amber = status lock, blue = role lock) are all gated. `api_consumer` users are redirected to `/catalogs/:id/graphql` on any protected page. The `fetchMyRoles()` function correctly maps `CatalogWithRole.catalog.id` from the nested API response.
 - **GraphQL Engine:** Provides a runtime GraphQL API for each catalog, generating schemas dynamically from stored metadata, with configurable depth limits and slug conventions.
 
 ## External Dependencies

@@ -3,6 +3,7 @@ import { Search, X, LayoutGrid, Table, Columns3, Plus, Loader2 } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { SnapshotTemplate } from "@/lib/apiClient";
 import { ColumnPickerPanel, loadColumnPrefs, saveColumnPrefs } from "./ColumnPickerPanel";
 import { cn } from "@/lib/utils";
@@ -37,6 +38,7 @@ export function ContentHeader({
   const isColumnPickerOpen = useUiStore((s) => s.isColumnPickerOpen);
   const toggleColumnPicker = useUiStore((s) => s.toggleColumnPicker);
   const closeColumnPicker = useUiStore((s) => s.closeColumnPicker);
+  const { canCreateEntries } = usePermissions(catalogId);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const columnsButtonRef = useRef<HTMLDivElement>(null);
@@ -137,10 +139,12 @@ export function ContentHeader({
           </div>
         )}
 
-        <Button onClick={onNewEntry} size="sm" className="h-9" data-testid="new-entry-button">
-          <Plus className="w-4 h-4 mr-1.5" />
-          New Entry
-        </Button>
+        {canCreateEntries && (
+          <Button onClick={onNewEntry} size="sm" className="h-9" data-testid="new-entry-button">
+            <Plus className="w-4 h-4 mr-1.5" />
+            New Entry
+          </Button>
+        )}
       </div>
     </div>
   );

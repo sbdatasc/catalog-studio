@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { DeleteEntryModal } from "./DeleteEntryModal";
 import { CardLinkHandle } from "./CardLinkHandle";
+import { usePermissions } from "@/hooks/usePermissions";
 import type { EntryListItem, SnapshotTemplate } from "@/lib/apiClient";
 import { cn } from "@/lib/utils";
 
@@ -59,10 +60,11 @@ export function EntryCard({
   const [isDragOver, setIsDragOver] = useState(false);
 
   const detailPath = `/catalogs/${catalogId}/operational/${template.id}/entries/${entry.id}`;
+  const { canEditEntries, canDeleteEntries, canLinkEntries } = usePermissions(catalogId);
 
   const hasRelationships = template.relationships.length > 0;
   const isDiscontinued = catalogStatus === "discontinued";
-  const canShowLinkHandle = hasRelationships && !isDiscontinued && !isInLinkMode;
+  const canShowLinkHandle = hasRelationships && !isDiscontinued && !isInLinkMode && canLinkEntries;
 
   function handleCardClick(e: React.MouseEvent) {
     if (isInLinkMode) return;
@@ -155,7 +157,7 @@ export function EntryCard({
             <p className="text-xs text-muted-foreground mt-0.5">{template.name}</p>
           </div>
 
-          {!isInLinkMode && (
+          {!isInLinkMode && (canEditEntries || canDeleteEntries) && (
             <div data-no-navigate>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -167,17 +169,21 @@ export function EntryCard({
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onClick={() => onEdit(entry.id)}>
-                    <Pencil className="w-4 h-4 mr-2" />
-                    Edit
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => setDeleteOpen(true)}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </DropdownMenuItem>
+                  {canEditEntries && (
+                    <DropdownMenuItem onClick={() => onEdit(entry.id)}>
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </DropdownMenuItem>
+                  )}
+                  {canDeleteEntries && (
+                    <DropdownMenuItem
+                      className="text-destructive focus:text-destructive"
+                      onClick={() => setDeleteOpen(true)}
+                    >
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

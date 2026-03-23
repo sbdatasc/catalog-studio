@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useEntryStore } from "@/stores/entryStore";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { apiClient } from "@/lib/apiClient";
 import type { CatalogEntry, SnapshotTemplate } from "@/lib/apiClient";
 import { SectionAccordion } from "@/components/operational/SectionAccordion";
@@ -40,6 +41,7 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
   const fetchPublishedSchema = useSchemaStore((s) => s.fetchPublishedSchema);
 
   const setActiveCatalog = useUiStore((s) => s.setActiveCatalog);
+  const { canEditEntries, canDeleteEntries } = usePermissions(catalogId);
 
   const [mode, setMode] = useState<PageMode>("loading");
   const [activeTab, setActiveTab] = useState<ActiveTab>("details");
@@ -341,19 +343,23 @@ export function EntryDetailPage({ catalogId, templateId, entryId }: Props) {
 
           {!isEditing ? (
             <div className="flex items-center gap-2 shrink-0">
-              <Button variant="outline" size="sm" onClick={enterEditMode}>
-                <Pencil className="w-4 h-4 mr-1.5" />
-                Edit Entry
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:text-destructive border-destructive/40 hover:border-destructive hover:bg-destructive/5"
-                onClick={() => setDeleteOpen(true)}
-              >
-                <Trash2 className="w-4 h-4 mr-1.5" />
-                Delete Entry
-              </Button>
+              {canEditEntries && (
+                <Button variant="outline" size="sm" onClick={enterEditMode}>
+                  <Pencil className="w-4 h-4 mr-1.5" />
+                  Edit Entry
+                </Button>
+              )}
+              {canDeleteEntries && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive border-destructive/40 hover:border-destructive hover:bg-destructive/5"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete Entry
+                </Button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-2 shrink-0">

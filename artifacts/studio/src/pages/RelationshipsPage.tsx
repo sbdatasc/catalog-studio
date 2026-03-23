@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { ReactFlowProvider } from "@xyflow/react";
-import { Lock } from "lucide-react";
+import { Lock, UserCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DesignerNav } from "@/components/DesignerNav";
 import { GraphCanvas } from "@/components/designer/relationships/GraphCanvas";
@@ -8,6 +9,7 @@ import { RelationshipDrawer } from "@/components/designer/relationships/Relation
 import { DeleteRelationshipModal } from "@/components/designer/relationships/DeleteRelationshipModal";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { apiClient } from "@/lib/apiClient";
 
 interface Props {
@@ -15,6 +17,8 @@ interface Props {
 }
 
 export function RelationshipsPage({ catalogId }: Props) {
+  const [, navigate] = useLocation();
+
   const {
     templates,
     templatesLoading,
@@ -30,11 +34,19 @@ export function RelationshipsPage({ catalogId }: Props) {
   } = useSchemaStore();
 
   const { activeCatalogStatus, setActiveCatalog, clearActiveCatalog } = useUiStore();
+  const { canEditSchema, canManageCatalog, role } = usePermissions(catalogId);
 
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
-  const isCatalogLocked =
-    activeCatalogStatus !== null && activeCatalogStatus !== "draft";
+  const statusLocked = activeCatalogStatus !== null && activeCatalogStatus !== "draft";
+  const roleLocked = !canEditSchema;
+  const isCatalogLocked = statusLocked || roleLocked;
+
+  useEffect(() => {
+    if (role === "api_consumer") {
+      navigate(`/catalogs/${catalogId}/graphql`, { replace: true });
+    }
+  }, [role, catalogId, navigate]);
 
   const relationships = relationshipsByCatalog[catalogId] ?? [];
   const relsLoading = relationshipsLoading[catalogId] ?? true;
@@ -77,27 +89,40 @@ export function RelationshipsPage({ catalogId }: Props) {
     <div className="h-screen flex flex-col w-full bg-background overflow-hidden">
       <DesignerNav catalogId={catalogId} tab="relationships" />
 
-      {/* Locked banner */}
-      {isCatalogLocked && (
+      {/* Status lock banner */}
+      {statusLocked && (
         <div className="flex items-center gap-3 px-6 py-3 bg-amber-50 border-b border-amber-200 text-amber-800 dark:bg-amber-950/30 dark:border-amber-800/50 dark:text-amber-300">
           <Lock className="w-4 h-4 shrink-0" />
           <div className="flex-1 text-sm">
-            <span className="font-medium">This catalog is locked.</span>{" "}
-            Relationship editing is disabled. Duplicate the catalog to make changes.
+            <span className="font-medium">This catalog is locked for editing.</span>{" "}
+            Duplicate it to make changes.
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="text-amber-700 border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700"
-            onClick={async () => {
-              const { data } = await apiClient.catalogs.duplicate(catalogId);
-              if (data) {
-                window.location.href = `/catalogs/${data.id}/designer/relationships`;
-              }
-            }}
-          >
-            Duplicate Catalog
-          </Button>
+          {canManageCatalog && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-amber-700 border-amber-300 hover:bg-amber-100 dark:text-amber-300 dark:border-amber-700"
+              onClick={async () => {
+                const { data } = await apiClient.catalogs.duplicate(catalogId);
+                if (data) {
+                  window.location.href = `/catalogs/${data.id}/designer/relationships`;
+                }
+              }}
+            >
+              Duplicate Catalog
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Role lock banner */}
+      {!statusLocked && roleLocked && (
+        <div className="flex items-center gap-3 px-6 py-3 bg-blue-50 border-b border-blue-200 text-blue-800 dark:bg-blue-950/30 dark:border-blue-800/50 dark:text-blue-300">
+          <UserCheck className="w-4 h-4 shrink-0" />
+          <p className="text-sm">
+            <span className="font-medium capitalize">Your role on this catalog is {role ?? "unknown"}.</span>{" "}
+            You have read-only access to Designer Mode.
+          </p>
         </div>
       )}
 

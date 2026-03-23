@@ -89,6 +89,7 @@ interface CatalogCardProps {
 
 function CatalogCard({ catalog, myRole, onEdit, onTransition, onDuplicate, onOpen, onOpenMembers }: CatalogCardProps) {
   const next = NEXT_STATUS[catalog.status];
+  const isAdmin = myRole === "catalog_admin" || myRole === "platform_admin";
 
   return (
     <div
@@ -149,7 +150,7 @@ function CatalogCard({ catalog, myRole, onEdit, onTransition, onDuplicate, onOpe
           className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
-          {myRole && (
+          {isAdmin && (
             <button
               onClick={onOpenMembers}
               className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
@@ -159,7 +160,7 @@ function CatalogCard({ catalog, myRole, onEdit, onTransition, onDuplicate, onOpe
               <Users className="w-3.5 h-3.5" />
             </button>
           )}
-          {next && (
+          {isAdmin && next && (
             <button
               onClick={onTransition}
               className="px-2 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded-md transition-colors"
@@ -168,20 +169,24 @@ function CatalogCard({ catalog, myRole, onEdit, onTransition, onDuplicate, onOpe
               {next.label}
             </button>
           )}
-          <button
-            onClick={onEdit}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-            data-testid={`button-edit-catalog-${catalog.id}`}
-          >
-            <Pencil className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={onDuplicate}
-            className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
-            data-testid={`button-duplicate-catalog-${catalog.id}`}
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
+          {isAdmin && (
+            <button
+              onClick={onEdit}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              data-testid={`button-edit-catalog-${catalog.id}`}
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={onDuplicate}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              data-testid={`button-duplicate-catalog-${catalog.id}`}
+            >
+              <Copy className="w-3.5 h-3.5" />
+            </button>
+          )}
           <ChevronRight
             className="w-4 h-4 text-muted-foreground cursor-pointer"
             onClick={onOpen}
@@ -424,7 +429,12 @@ export function CatalogsPage() {
   }
 
   const handleOpen = (catalog: Catalog) => {
-    navigate(`/catalogs/${catalog.id}/designer/templates`);
+    const role = getEffectiveRole(catalog.id);
+    if (role === "api_consumer") {
+      navigate(`/catalogs/${catalog.id}/graphql`);
+    } else {
+      navigate(`/catalogs/${catalog.id}/designer/templates`);
+    }
   };
 
   const handleEdit = (catalog: Catalog) => {

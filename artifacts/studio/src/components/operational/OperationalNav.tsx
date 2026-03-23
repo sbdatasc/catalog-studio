@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import { Database, ChevronLeft } from "lucide-react";
 import type { SnapshotTemplate } from "@/lib/apiClient";
 import { useUiStore } from "@/stores/uiStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/auth/UserMenu";
 
@@ -15,6 +16,7 @@ export function OperationalNav({ catalogId, catalogName, tabs }: Props) {
   const activeTemplateTabId = useUiStore((s) => s.activeTemplateTabId);
   const setActiveTemplateTab = useUiStore((s) => s.setActiveTemplateTab);
   const isEntryFormOpen = useUiStore((s) => s.isEntryFormOpen);
+  const { canViewDesigner, canViewEntries, canUseGraphQL } = usePermissions(catalogId);
 
   const sortedTabs = tabs.slice().sort((a, b) => a.name.localeCompare(b.name));
 
@@ -48,22 +50,29 @@ export function OperationalNav({ catalogId, catalogName, tabs }: Props) {
         </div>
 
         <div className="flex items-center bg-muted/50 p-1 rounded-lg border border-border/50">
-          <Link
-            href={`/catalogs/${catalogId}/designer/templates`}
-            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
-          >
-            Designer
-          </Link>
-          <button className="px-4 py-1.5 text-sm font-medium rounded-md bg-card text-foreground shadow-sm ring-1 ring-black/5">
-            Operational
-          </button>
-          <Link
-            href={`/catalogs/${catalogId}/graphql`}
-            className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
-            data-testid="nav-mode-api"
-          >
-            API
-          </Link>
+          {canViewDesigner && (
+            <Link
+              href={`/catalogs/${catalogId}/designer/templates`}
+              className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
+              data-testid="nav-mode-designer"
+            >
+              Designer
+            </Link>
+          )}
+          {canViewEntries && (
+            <button className="px-4 py-1.5 text-sm font-medium rounded-md bg-card text-foreground shadow-sm ring-1 ring-black/5">
+              Operational
+            </button>
+          )}
+          {canUseGraphQL && (
+            <Link
+              href={`/catalogs/${catalogId}/graphql`}
+              className="px-4 py-1.5 text-sm font-medium rounded-md text-muted-foreground hover:text-foreground hover:bg-background/70 transition-colors"
+              data-testid="nav-mode-api"
+            >
+              API
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center justify-end w-[160px]">
