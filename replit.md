@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a pnpm monorepo utilizing TypeScript for building a data catalog management system. It comprises an Express API server (`api-server`) and a React + Vite frontend (`studio`). The system enables users to define, manage, and publish data schemas and catalog entries, supporting features like schema versioning, relationship linking, and reference data management. The overarching vision is to provide a robust, scalable, and user-friendly platform for organizing and governing data assets within an enterprise.
+This project is a pnpm monorepo using TypeScript to build a data catalog management system. It provides an Express API server (`api-server`) and a React + Vite frontend (`studio`). The system allows users to define, manage, and publish data schemas and catalog entries, supporting features such as schema versioning, relationship linking, and reference data management. The goal is to create a scalable and user-friendly platform for organizing and governing enterprise data assets.
 
 ## User Preferences
 
@@ -14,118 +14,53 @@ The project is structured as a pnpm workspace monorepo.
 
 **Core Technologies:**
 - **Monorepo:** pnpm workspaces
-- **Backend:** Node.js 24, Express 5, PostgreSQL, Drizzle ORM, Zod for validation
-- **Frontend:** React, Vite, Zustand for state management, `@dnd-kit/core` for drag-and-drop
-- **Build:** esbuild (CJS bundle)
-- **Language:** TypeScript 5.9 (with composite projects for optimized type-checking)
+- **Backend:** Node.js, Express, PostgreSQL, Drizzle ORM, Zod
+- **Frontend:** React, Vite, Zustand, `@dnd-kit/core`
+- **Language:** TypeScript
 
 **Monorepo Structure:**
-- `artifacts/`: Deployable applications (`api-server`, `studio`)
-- `lib/`: Shared libraries (`api-spec`, `api-client-react`, `api-zod`, `db`)
+- `artifacts/`: Deployable applications
+- `lib/`: Shared libraries (API specifications, client, database)
 - `scripts/`: Utility scripts
 
 **Backend (`api-server`) Architecture:**
-- Express API with routes organized by domain (e.g., `/api/catalogs`, `/api/schema`).
-- Services layer (`catalogService`, `templateService`, `entryService`, `coercionService`) handles business logic and interacts with the database.
-- Centralized database connection management (`src/db/connection.ts`).
-- Drizzle ORM for database interactions, with schema definitions in `lib/db`.
-- Database migrations and seeding utilities.
-- API responses follow a typed envelope `{ data: T | null, error: AppError | null }` with standardized error codes.
+- Express API with domain-organized routes.
+- Services layer for business logic and database interaction.
+- Drizzle ORM for database operations.
+- Typed API responses with standardized error handling.
+- Implements user authentication (JWT + HttpOnly Cookie Refresh Tokens) with role-based access control (RBAC) for platform administrators and catalog-specific roles.
+- Provides a runtime GraphQL engine for catalog data, building schemas programmatically from snapshots and enforcing depth limits.
 
 **Frontend (`studio`) Architecture:**
-- React application with Vite as the build tool.
-- Global state managed using Zustand (`catalogStore`, `schemaStore`, `uiStore`, `publishStore`, `entryStore`).
-- React Router for client-side navigation.
-- UI components are designed for reusability, with specific components for catalog management, schema design (templates, sections, attributes), and entry relationship linking.
-- Design patterns include:
-    - **D-02 Template Detail Components:** Dedicated components for managing sections and attributes within a template (`SectionList`, `SectionPanel`, `AttributeList`, `AttributeInlineForm`, `SectionDrawer`).
-    - **D-04 Publish / Version Control:** Dedicated store and page for managing schema publishing, checklist validation, and version history.
-    - **O-03 Relationship Instance Linking:** Comprehensive drag-and-drop linking functionality between catalog entries (`EntryLinkChip`, `RelationshipSubsection`, `RelationshipLinkDrawer`, `EntryCard`, `EntryCardGrid`). Dynamic UI adaptations based on the number of relationships per template.
+- React application with Vite.
+- Global state managed using Zustand.
+- React Router for navigation.
+- Reusable UI components for catalog management, schema design, and entry relationship linking.
+- Specific design patterns for template details, schema publishing/version control, and relationship instance linking.
+- User interface for administrative tasks like user management and catalog role assignments.
+- Integrates an embedded GraphiQL playground for exploring catalog data via GraphQL.
 
-**Database Architecture (v2 — Catalog Layer):**
-- PostgreSQL database managed by Drizzle ORM.
+**Database Architecture:**
+- PostgreSQL, managed by Drizzle ORM.
 - **Schema Hierarchy:** Catalog → Template → Section → Attribute.
-- All templates and catalog entries are scoped to a Catalog.
-- **Key Rules:**
-    1. Single DB connection pool managed by `api-server`.
-    2. Catalog status transitions: `draft → pilot → published → discontinued`. Schema mutations are only allowed in `draft` status.
-    3. Support for "Reference Data templates" for controlled vocabularies.
-    4. Attribute type immutability after creation.
-    5. EAV (Entity-Attribute-Value) pattern for storing attribute values as TEXT, with coercion at read time.
-    6. System seed templates are protected from deletion and name modification.
-    7. Catalog duplication feature performs a deep copy of schema definitions.
-    8. Unique constraints for template names/slugs are scoped per catalog.
+- Supports catalog status transitions and immutability rules for schema elements.
+- Uses an EAV (Entity-Attribute-Value) pattern for storing attribute values with type coercion.
+- Implements tables for users, refresh tokens, and catalog-specific roles to support authentication and authorization.
 
-**Publish / Version Control (D-04):**
-- Backend: `computeDiff` utility, `templateService` for publishing logic, `schema_versions` table to store snapshots and diffs.
-- Frontend: `publishStore` (Zustand) for checklist and version management, `PublishPage` for UI.
-- Publish flow involves a 10-step transaction including pre-publish checklist, schema snapshot generation, diff computation, versioning, and entry migration.
-- Pre-publish checklist includes checks for template completeness, broken references, and valid reference data.
-
-**Relationship Instance Linking (O-03):**
-- Backend: `entryService` for linking/unlinking entries with cardinality enforcement.
-- Frontend: `entryStore` for link state, `uiStore` for link mode management.
-- Utility `getCompatibleTemplateIds` for identifying linkable templates.
-- UI components for displaying links (`EntryLinkChip`), managing relationships (`RelationshipSubsection`, `RelationshipsTab`), and facilitating the drag-and-drop linking experience (`CardLinkHandle`, `LinkModeOverlay`, `RelationshipSelectionDialog`).
-
-**O-01 Operational Mode — Entry Creation:**
-- Full CRUD entry lifecycle: `entryService.ts` (createEntry, listEntries, searchEntries, getEntry, updateEntry, deleteEntry) + `coercionService.ts` (toStorageString, fromStorageString, validateAttributeValue, toDisplayString).
-- Entries validated against the published schema snapshot; `REQUIRED_FIELD_MISSING` / `REFERENCE_NOT_FOUND` / `VALIDATION_ERROR` service error codes.
-- REST routes: `POST /api/entries`, `GET /api/entries`, `GET /api/entries/search`, `PATCH /api/entries/:id`, `DELETE /api/entries/:id`.
-- Frontend: `OperationalPage.tsx` with tabbed template navigation, card/table view toggle, debounced search. `EntryForm.tsx` with `SectionAccordion`, 8 typed field controls in `components/operational/fields/`. `entryStore.ts` (paginated entry lists, activeEntry, linksByEntry). `uiStore.ts` additions: activeTemplateTabId, isEntryFormOpen, entryListViewMode.
-
-**A-01 User Authentication (JWT + HttpOnly Cookie Refresh Tokens):**
-- **Backend:** `authService.ts` (register, login, refresh, logout, getMe, bootstrapAdmin). `jwt.ts` (HS256, 15-min access tokens). `rateLimiter.ts` (5 attempts/15 min per email, in-memory). `routes/auth.ts` (POST /api/auth/register|login|refresh|logout; GET /api/auth/me).
-- **Database (migration 004):** `users` table (email UNIQUE, password_hash bcrypt-12, display_name, system_role, is_active). `refresh_tokens` table (user_id FK→users CASCADE, token_hash SHA-256 for fast lookup, expires_at 7 days).
-- **Token format:** Access token = 15-min JWT in memory; Refresh token = SHA-256 hash stored in DB, raw token in HttpOnly SameSite=Strict cookie. Each refresh rotates the token.
-- **Bootstrap:** `bootstrapAdmin()` called on startup — creates platform_admin from ADMIN_EMAIL/ADMIN_PASSWORD env vars if no admin exists.
-- **Env vars:** JWT_SECRET (≥32 chars), ADMIN_EMAIL, ADMIN_PASSWORD.
-- **Frontend:** `authStore.ts` (Zustand — user, accessToken, isAuthenticated, login/register/logout/refresh/reset). `ProtectedRoute.tsx` (calls refresh() on mount, spinner while checking, redirects to /login). `LoginPage.tsx` / `RegisterPage.tsx`. All `fetchApi` calls inject `Authorization: Bearer <token>` lazily from authStore. `UserMenu` component added to CatalogsPage, DesignerNav, OperationalNav, GraphQLNav headers.
-- **App.tsx routing:** /login, /register are public; all /catalogs/* routes are wrapped in ProtectedRoute.
-
-**A-03 Platform Admin User Management:**
-- **Backend:** `authenticate()` middleware (verifyAccessToken + DB is_active check). `requirePlatformAdmin()` middleware (systemRole guard). `adminService.ts` (listUsers with pagination/search, setUserStatus with refresh-token invalidation, setUserRole with last-admin guard). `routes/admin/users.ts` (GET /api/admin/users, PATCH /api/admin/users/:id/status, PATCH /api/admin/users/:id/role). Registered at `/api/admin/users` behind both middleware.
-- **Frontend:** `adminStore.ts` (Zustand — fetchUsers, updateUser, reset). `AdminRoute.tsx` (wraps ProtectedRoute + platform_admin role check; non-admins redirected to /catalogs). `AdminUsersPage.tsx` (/admin/users — searchable user table, role/status badges, deactivate/reactivate/promote/demote with confirmation modals, own-row highlighting, pagination). `UserMenu.tsx` — "Admin panel" link visible only to platform_admins. `apiClient.ts` — token-expiry interceptor: on 401 AUTH_TOKEN_EXPIRED silently calls refresh() and retries the request once.
-- **Guards:** Cannot demote the last active platform_admin (last-admin guard). Deactivating a user immediately deletes all their refresh_tokens (forced logout). Admins cannot deactivate/promote/demote their own account (row actions hidden for self).
-
-**A-04 Catalog RBAC Role Assignment:**
-- **Database (migration 005):** `catalog_roles` table — `(catalog_id FK→catalogs CASCADE, user_id FK→users CASCADE, catalog_role ENUM, assigned_by FK→users SET NULL, assigned_at)` with UNIQUE constraint on `(catalog_id, user_id)`.
-- **CatalogRole enum:** `catalog_admin | designer | steward | viewer | api_consumer`.
-- **Backend service:** `catalogRoleService.ts` — `getUserCatalogRole`, `getMyCatalogs`, `listMembers`, `searchEligibleUsers` (excludes existing members + inactive users), `addMember` (CONFLICT/FORBIDDEN/VALIDATION guards), `changeMemberRole` (last-admin guard), `removeMember` (last-admin guard).
-- **Routes:** `routes/catalogRoles.ts` registered at `/api/catalog-roles` behind `authenticate` middleware. Endpoints: GET /my-catalogs, GET /:catalogId/members, GET /:catalogId/eligible-users?q=, POST /:catalogId/members, PATCH /:catalogId/members/:userId, DELETE /:catalogId/members/:userId.
-- **Creator auto-assignment:** `catalogService.createCatalog()` uses a DB transaction to insert the catalog AND the creator's `catalog_admin` role in one atomic step. The `/api/catalogs` route now uses `authenticateOptional` middleware so `req.user` is populated when a token is present.
-- **`authenticateOptional` middleware:** New middleware that populates `req.user` if a valid token is present, but does not reject unauthenticated requests.
-- **Platform admin rule:** `systemRole === 'platform_admin'` grants full implicit access to all catalogs regardless of `catalog_roles` table. Effective role computed by `useMyRole(catalogId)` hook.
-- **Frontend — `apiClient.ts`:** New types `CatalogRole`, `CatalogMember`, `EligibleUser`, `CatalogWithRole`. New `apiClient.catalogRoles` namespace with all 6 endpoints.
-- **Frontend — `catalogStore.ts`:** Added `myRoles: Record<string, CatalogRole | 'platform_admin'>`, `myRolesLoading`, `fetchMyRoles()` (calls GET /my-catalogs and builds the id→role map). Reset included in `initialState`.
-- **Frontend — `hooks/useMyRole.ts`:** Returns `CatalogRole | 'platform_admin' | null` — platform_admin users always get 'platform_admin', others look up `myRoles[catalogId]`.
-- **Frontend — `CatalogMembersDrawer.tsx`:** Full RBAC management UI — Sheet drawer with member list, platform admin banner row, `MemberRow` components, `ChangeRoleModal` (role picker with descriptions), `RemoveMemberModal` (confirm destructive), `AddMemberDrawer` (typeahead search with 280ms debounce + role selector). All actions show success toasts and handle LAST_ADMIN guard errors inline.
-- **Frontend — `CatalogsPage.tsx`:** `CatalogCard` now accepts `myRole` prop, shows "Platform Admin" badge (blue) or catalog role badge (purple/blue/amber/green). Users icon hover button opens `CatalogMembersDrawer`. `CatalogsPage` calls `fetchMyRoles()` on mount alongside `fetchCatalogs()`. `getEffectiveRole()` helper computes per-catalog role.
-
-**G-02 Embedded GraphiQL Playground:**
-- Route `/catalogs/:catalogId/graphql` renders `GraphQLPage.tsx` — full-height GraphiQL editor with the catalog's GraphQL endpoint pre-configured.
-- `createCatalogFetcher` auto-injects `catalogId` variable into all query requests.
-- `ExampleQueriesPanel` generates schema-aware example queries and loads them into the editor via `initialQuery` + key-based remount (GraphiQL v5 API; `query` prop removed).
-- `GraphQLNav` / `GraphQLPageHeader` / `GraphQLPageHeader` nav components; "API" link added to `DesignerNav` and `OperationalNav`.
-- CSP middleware added for `/catalogs/:catalogId/graphql` path in Express `app.ts` (using Express 5 compatible route pattern).
-
-**G-01 Runtime GraphQL Engine:**
-- `graphql` (graphql-js ^16) installed in `api-server` as the runtime schema building and execution library.
-- `artifacts/api-server/src/graphql/` contains: `context.ts` (GraphQLContext, SlugMap), `filters.ts` (6 scalar filter input types + in-memory filter application), `resolvers.ts` (rootList, rootSingle, relationship, attribute, refData resolvers), `engine.ts` (schema building, caching, slug utilities).
-- `POST /api/graphql` route handler in `artifacts/api-server/src/routes/graphql.ts`.
-- Schema built programmatically from `SchemaSnapshot` — no code generation. Cached per catalog (keyed by versionId).
-- Two-level traversal rule: `depth` tracked in context; relationship resolvers return null at `depth >= 3`.
-- `catalogId` required as a GraphQL variable on all queries.
-- Error codes added to `AppErrorCode`: `GRAPHQL_SCHEMA_UNREADY`, `GRAPHQL_QUERY_INVALID`.
-- Studio `apiClient.graphql(query, variables)` method added.
-- Slug conventions: `toGraphQLSlug()` → object type name via `toPascalCase()`; list query = `slug + 's'`; single = `slug`; relationship field = `toGraphQLSlug(rel.label)`.
+**Key Features & Design Principles:**
+- **Publish / Version Control:** Manages schema publishing, versioning, and entry migration with a multi-step transaction and pre-publish checklist.
+- **Relationship Instance Linking:** Provides comprehensive drag-and-drop functionality for linking entries, including cardinality enforcement and dynamic UI.
+- **Operational Mode:** Supports full CRUD operations for catalog entries with validation against published schemas.
+- **User Authentication:** Secure JWT-based authentication with refresh tokens and role-based access for system and catalog administration.
+- **RBAC Enforcement (A-05):** `requireCatalogRole()` middleware factory enforces a 4-level role hierarchy (viewer → steward → designer → catalog_admin) on every API route. Platform admins bypass all checks. `api_consumer` receives FORBIDDEN on all REST routes. `GET /api/catalogs` is filtered per user — only returns catalogs the authenticated user has a role on.
+- **GraphQL Engine:** Provides a runtime GraphQL API for each catalog, generating schemas dynamically from stored metadata, with configurable depth limits and slug conventions.
 
 ## External Dependencies
 
 - **Database:** PostgreSQL
 - **ORM:** Drizzle ORM
 - **Validation:** Zod
-- **API Client Generation:** Orval (used in `lib/api-spec` to generate `api-client-react` and `api-zod`)
-- **Drag-and-Drop:** `@dnd-kit/core` and `@dnd-kit/sortable`
+- **API Client Generation:** Orval
+- **Drag-and-Drop:** `@dnd-kit/core`, `@dnd-kit/sortable`
 - **State Management:** Zustand
-- **GraphQL:** `graphql` ^16 (graphql-js) — runtime schema building in `api-server`
+- **GraphQL:** `graphql` (graphql-js)

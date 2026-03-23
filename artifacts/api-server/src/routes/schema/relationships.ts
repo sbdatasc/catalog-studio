@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as relationshipService from "../../services/relationshipService";
 import { ServiceError } from "../../lib/errors";
 import { sendSuccess, sendError } from "../../lib/response";
+import { requireCatalogRole } from "../../middleware/requireCatalogRole";
 
 const router: IRouter = Router();
 
@@ -64,124 +65,163 @@ const NodePositionsBody = z.object({
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/schema/relationships/positions?catalogId=:id
+// GET /api/schema/relationships/positions — viewer
 // Must be before /:id routes so "positions" isn't treated as a UUID
 // ---------------------------------------------------------------------------
 
-router.get("/positions", async (req, res): Promise<void> => {
-  const catalogId = req.query.catalogId as string | undefined;
-  if (!catalogId) {
-    sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
-    return;
-  }
-  try {
-    const positions = await relationshipService.getNodePositions(catalogId);
-    sendSuccess(res, positions);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.get(
+  "/positions",
+  requireCatalogRole("viewer", (req) => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) throw new ServiceError("NOT_FOUND", "catalogId query parameter is required");
+    return catalogId;
+  }),
+  async (req, res): Promise<void> => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) {
+      sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
+      return;
+    }
+    try {
+      const positions = await relationshipService.getNodePositions(catalogId);
+      sendSuccess(res, positions);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/schema/relationships/positions
+// POST /api/schema/relationships/positions — designer
 // ---------------------------------------------------------------------------
 
-router.post("/positions", async (req, res): Promise<void> => {
-  const catalogId = req.query.catalogId as string | undefined;
-  if (!catalogId) {
-    sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
-    return;
-  }
-  const parsed = NodePositionsBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    await relationshipService.saveNodePositions(catalogId, parsed.data.positions);
-    sendSuccess(res, { ok: true });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/positions",
+  requireCatalogRole("designer", (req) => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) throw new ServiceError("NOT_FOUND", "catalogId query parameter is required");
+    return catalogId;
+  }),
+  async (req, res): Promise<void> => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) {
+      sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
+      return;
+    }
+    const parsed = NodePositionsBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      await relationshipService.saveNodePositions(catalogId, parsed.data.positions);
+      sendSuccess(res, { ok: true });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// GET /api/schema/relationships?catalogId=:id
+// GET /api/schema/relationships — viewer
 // ---------------------------------------------------------------------------
 
-router.get("/", async (req, res): Promise<void> => {
-  const catalogId = req.query.catalogId as string | undefined;
-  if (!catalogId) {
-    sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
-    return;
-  }
-  try {
-    const relationships = await relationshipService.listRelationships(catalogId);
-    sendSuccess(res, relationships);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.get(
+  "/",
+  requireCatalogRole("viewer", (req) => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) throw new ServiceError("NOT_FOUND", "catalogId query parameter is required");
+    return catalogId;
+  }),
+  async (req, res): Promise<void> => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) {
+      sendError(res, 400, "BAD_REQUEST", "catalogId query parameter is required");
+      return;
+    }
+    try {
+      const relationships = await relationshipService.listRelationships(catalogId);
+      sendSuccess(res, relationships);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/schema/relationships
+// POST /api/schema/relationships — designer
 // ---------------------------------------------------------------------------
 
-router.post("/", async (req, res): Promise<void> => {
-  const parsed = CreateRelationshipBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const rel = await relationshipService.createRelationship(parsed.data);
-    sendSuccess(res, rel, { status: 201 });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/",
+  requireCatalogRole("designer", (req) => {
+    const body = CreateRelationshipBody.safeParse(req.body);
+    if (!body.success) throw new ServiceError("NOT_FOUND", "catalogId is required");
+    return body.data.catalogId;
+  }),
+  async (req, res): Promise<void> => {
+    const parsed = CreateRelationshipBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const rel = await relationshipService.createRelationship(parsed.data);
+      sendSuccess(res, rel, { status: 201 });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// PATCH /api/schema/relationships/:id
+// PATCH /api/schema/relationships/:id — designer
 // ---------------------------------------------------------------------------
 
-router.patch("/:id", async (req, res): Promise<void> => {
-  // Reject if fromTemplateId or toTemplateId in body
-  if (req.body.fromTemplateId !== undefined || req.body.toTemplateId !== undefined) {
-    sendError(
-      res,
-      422,
-      "VALIDATION_ERROR",
-      "fromTemplateId and toTemplateId cannot be changed. Delete and recreate the relationship.",
-    );
-    return;
-  }
+router.patch(
+  "/:id",
+  requireCatalogRole("designer", (req) => relationshipService.getCatalogIdForRelationship(req.params.id)),
+  async (req, res): Promise<void> => {
+    if (req.body.fromTemplateId !== undefined || req.body.toTemplateId !== undefined) {
+      sendError(
+        res,
+        422,
+        "VALIDATION_ERROR",
+        "fromTemplateId and toTemplateId cannot be changed. Delete and recreate the relationship.",
+      );
+      return;
+    }
 
-  const parsed = UpdateRelationshipBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
+    const parsed = UpdateRelationshipBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
 
-  try {
-    const rel = await relationshipService.updateRelationship(req.params.id, parsed.data);
-    sendSuccess(res, rel);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+    try {
+      const rel = await relationshipService.updateRelationship(req.params.id, parsed.data);
+      sendSuccess(res, rel);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// DELETE /api/schema/relationships/:id
+// DELETE /api/schema/relationships/:id — designer
 // ---------------------------------------------------------------------------
 
-router.delete("/:id", async (req, res): Promise<void> => {
-  try {
-    const result = await relationshipService.deleteRelationship(req.params.id);
-    sendSuccess(res, { deleted: true, entryLinkCount: result.entryLinkCount });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.delete(
+  "/:id",
+  requireCatalogRole("designer", (req) => relationshipService.getCatalogIdForRelationship(req.params.id)),
+  async (req, res): Promise<void> => {
+    try {
+      const result = await relationshipService.deleteRelationship(req.params.id);
+      sendSuccess(res, { deleted: true, entryLinkCount: result.entryLinkCount });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 export default router;

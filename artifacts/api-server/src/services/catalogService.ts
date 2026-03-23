@@ -1,7 +1,8 @@
-import { eq, asc, count, sql } from "drizzle-orm";
+import { eq, asc, count, sql, inArray } from "drizzle-orm";
 import {
   catalogsTable,
   catalogRolesTable,
+  usersTable,
   schemaTemplatesTable,
   schemaSectionsTable,
   schemaAttributesTable,
@@ -75,12 +76,35 @@ async function withTemplateCounts(rows: typeof catalogsTable.$inferSelect[]): Pr
 // Catalog CRUD
 // ---------------------------------------------------------------------------
 
-export async function listCatalogs(): Promise<Catalog[]> {
+export async function listCatalogs(userId: string): Promise<Catalog[]> {
   const db = getDb();
+
+  const [userRow] = await db
+    .select({ systemRole: usersTable.systemRole })
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  if (!userRow) throw new ServiceError("NOT_FOUND", "User not found");
+
+  if (userRow.systemRole === "platform_admin") {
+    const rows = await db.select().from(catalogsTable).orderBy(asc(catalogsTable.name));
+    return withTemplateCounts(rows);
+  }
+
+  const roleRows = await db
+    .select({ catalogId: catalogRolesTable.catalogId })
+    .from(catalogRolesTable)
+    .where(eq(catalogRolesTable.userId, userId));
+
+  if (roleRows.length === 0) return [];
+
+  const catalogIds = roleRows.map((r) => r.catalogId);
   const rows = await db
     .select()
     .from(catalogsTable)
-    .orderBy(asc(catalogsTable.updatedAt));
+    .where(inArray(catalogsTable.id, catalogIds))
+    .orderBy(asc(catalogsTable.name));
 
   return withTemplateCounts(rows);
 }
@@ -201,7 +225,7 @@ export async function transitionStatus(id: string, targetStatus: string): Promis
   return { ...updated, status: updated.status as CatalogStatus, templateCount: catalog.templateCount };
 }
 
-export async function duplicateCatalog(id: string): Promise<Catalog> {
+export async function duplicateCatalog(id: string, creatorUserId?: string): Promise<Catalog> {
   const db = getDb();
   const source = await getCatalog(id);
 
@@ -223,7 +247,7 @@ export async function duplicateCatalog(id: string): Promise<Catalog> {
     }
   }
 
-  // Create new catalog in draft
+  // Create new catalog in draft and optionally assign creator as catalog_admin
   const [newCatalog] = await db
     .insert(catalogsTable)
     .values({
@@ -232,6 +256,15 @@ export async function duplicateCatalog(id: string): Promise<Catalog> {
       status: "draft",
     })
     .returning();
+
+  if (creatorUserId) {
+    await db.insert(catalogRolesTable).values({
+      catalogId: newCatalog.id,
+      userId: creatorUserId,
+      catalogRole: "catalog_admin",
+      assignedBy: creatorUserId,
+    });
+  }
 
   // Copy all templates (with their sections and attributes)
   const templates = await db

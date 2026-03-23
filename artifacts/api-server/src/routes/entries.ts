@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as entryService from "../services/entryService";
 import { ServiceError } from "../lib/errors";
 import { sendSuccess, sendError } from "../lib/response";
+import { requireCatalogRole } from "../middleware/requireCatalogRole";
 
 const router: IRouter = Router();
 
@@ -101,151 +102,199 @@ function handleServiceError(res: Parameters<typeof sendError>[0], err: unknown):
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/entries/search — must be before /:id to avoid conflicts
+// GET /api/entries/search — viewer (must be before /:id to avoid conflicts)
 // ---------------------------------------------------------------------------
 
-router.get("/search", async (req, res) => {
-  const parsed = SearchEntriesQuery.safeParse(req.query);
-  if (!parsed.success) {
-    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Invalid query");
-  }
+router.get(
+  "/search",
+  requireCatalogRole("viewer", (req) => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) throw new ServiceError("NOT_FOUND", "catalogId query parameter is required");
+    return catalogId;
+  }),
+  async (req, res) => {
+    const parsed = SearchEntriesQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Invalid query");
+    }
 
-  try {
-    const { catalogId, templateId, q, limit } = parsed.data;
-    const entries = await entryService.searchEntries(catalogId, templateId, q, limit);
-    sendSuccess(res, entries);
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/entries
-// ---------------------------------------------------------------------------
-
-router.get("/", async (req, res) => {
-  const parsed = ListEntriesQuery.safeParse(req.query);
-  if (!parsed.success) {
-    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Invalid query");
-  }
-
-  try {
-    const { catalogId, templateId, page, limit } = parsed.data;
-    const result = await entryService.listEntries(catalogId, templateId, page, limit);
-    sendSuccess(res, result);
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+    try {
+      const { catalogId, templateId, q, limit } = parsed.data;
+      const entries = await entryService.searchEntries(catalogId, templateId, q, limit);
+      sendSuccess(res, entries);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/entries
+// GET /api/entries — viewer
 // ---------------------------------------------------------------------------
 
-router.post("/", async (req, res) => {
-  const parsed = CreateEntryBody.safeParse(req.body);
-  if (!parsed.success) {
-    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
-  }
+router.get(
+  "/",
+  requireCatalogRole("viewer", (req) => {
+    const catalogId = req.query.catalogId as string | undefined;
+    if (!catalogId) throw new ServiceError("NOT_FOUND", "catalogId query parameter is required");
+    return catalogId;
+  }),
+  async (req, res) => {
+    const parsed = ListEntriesQuery.safeParse(req.query);
+    if (!parsed.success) {
+      return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Invalid query");
+    }
 
-  try {
-    const entry = await entryService.createEntry(parsed.data);
-    sendSuccess(res, entry, { status: 201 });
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// GET /api/entries/:id
-// ---------------------------------------------------------------------------
-
-router.get("/:id", async (req, res) => {
-  try {
-    const entry = await entryService.getEntry(req.params.id);
-    sendSuccess(res, entry);
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+    try {
+      const { catalogId, templateId, page, limit } = parsed.data;
+      const result = await entryService.listEntries(catalogId, templateId, page, limit);
+      sendSuccess(res, result);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// PATCH /api/entries/:id
+// POST /api/entries — steward
 // ---------------------------------------------------------------------------
 
-router.patch("/:id", async (req, res) => {
-  const parsed = UpdateEntryBody.safeParse(req.body);
-  if (!parsed.success) {
-    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
-  }
+router.post(
+  "/",
+  requireCatalogRole("steward", (req) => {
+    const body = CreateEntryBody.safeParse(req.body);
+    if (!body.success) throw new ServiceError("NOT_FOUND", "catalogId is required");
+    return body.data.catalogId;
+  }),
+  async (req, res) => {
+    const parsed = CreateEntryBody.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
+    }
 
-  try {
-    const entry = await entryService.updateEntry(req.params.id, parsed.data);
-    sendSuccess(res, entry);
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// DELETE /api/entries/:id
-// ---------------------------------------------------------------------------
-
-router.delete("/:id", async (req, res) => {
-  try {
-    await entryService.deleteEntry(req.params.id);
-    sendSuccess(res, { deleted: true });
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+    try {
+      const entry = await entryService.createEntry(parsed.data);
+      sendSuccess(res, entry, { status: 201 });
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// GET /api/entries/:id/relationships — O-03
+// GET /api/entries/:id — viewer
 // ---------------------------------------------------------------------------
 
-router.get("/:id/relationships", async (req, res) => {
-  try {
-    const links = await entryService.getLinkedEntries(req.params.id);
-    sendSuccess(res, links);
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+router.get(
+  "/:id",
+  requireCatalogRole("viewer", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    try {
+      const entry = await entryService.getEntry(req.params.id);
+      sendSuccess(res, entry);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/entries/:id/relationships — O-03
+// PATCH /api/entries/:id — steward
 // ---------------------------------------------------------------------------
 
-router.post("/:id/relationships", async (req, res) => {
-  const parsed = LinkEntryBody.safeParse(req.body);
-  if (!parsed.success) {
-    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
-  }
+router.patch(
+  "/:id",
+  requireCatalogRole("steward", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    const parsed = UpdateEntryBody.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
+    }
 
-  try {
-    const link = await entryService.linkEntries({
-      fromEntryId: req.params.id,
-      toEntryId: parsed.data.toEntryId,
-      relationshipId: parsed.data.relationshipId,
-    });
-    sendSuccess(res, link, { status: 201 });
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+    try {
+      const entry = await entryService.updateEntry(req.params.id, parsed.data);
+      sendSuccess(res, entry);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// DELETE /api/entries/:id/relationships/:linkId — O-03
+// DELETE /api/entries/:id — steward
 // ---------------------------------------------------------------------------
 
-router.delete("/:id/relationships/:linkId", async (req, res) => {
-  try {
-    await entryService.unlinkEntries(req.params.linkId);
-    sendSuccess(res, { deleted: true });
-  } catch (err) {
-    handleServiceError(res, err);
-  }
-});
+router.delete(
+  "/:id",
+  requireCatalogRole("steward", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    try {
+      await entryService.deleteEntry(req.params.id);
+      sendSuccess(res, { deleted: true });
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /api/entries/:id/relationships — viewer (O-03)
+// ---------------------------------------------------------------------------
+
+router.get(
+  "/:id/relationships",
+  requireCatalogRole("viewer", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    try {
+      const links = await entryService.getLinkedEntries(req.params.id);
+      sendSuccess(res, links);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/entries/:id/relationships — steward (O-03)
+// ---------------------------------------------------------------------------
+
+router.post(
+  "/:id/relationships",
+  requireCatalogRole("steward", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    const parsed = LinkEntryBody.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
+    }
+
+    try {
+      const link = await entryService.linkEntries({
+        fromEntryId: req.params.id,
+        toEntryId: parsed.data.toEntryId,
+        relationshipId: parsed.data.relationshipId,
+      });
+      sendSuccess(res, link, { status: 201 });
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /api/entries/:id/relationships/:linkId — steward (O-03)
+// ---------------------------------------------------------------------------
+
+router.delete(
+  "/:id/relationships/:linkId",
+  requireCatalogRole("steward", (req) => entryService.getCatalogIdForEntry(req.params.id)),
+  async (req, res) => {
+    try {
+      await entryService.unlinkEntries(req.params.linkId);
+      sendSuccess(res, { deleted: true });
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
 
 export default router;

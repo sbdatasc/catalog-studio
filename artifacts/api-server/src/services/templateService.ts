@@ -182,7 +182,7 @@ async function assertCatalogNotLocked(catalogId: string): Promise<void> {
   }
 }
 
-async function getCatalogIdForTemplate(templateId: string): Promise<string> {
+export async function getCatalogIdForTemplate(templateId: string): Promise<string> {
   const db = getDb();
   const [row] = await db
     .select({ catalogId: schemaTemplatesTable.catalogId })
@@ -194,7 +194,7 @@ async function getCatalogIdForTemplate(templateId: string): Promise<string> {
   return row.catalogId;
 }
 
-async function getCatalogIdForSection(sectionId: string): Promise<string> {
+export async function getCatalogIdForSection(sectionId: string): Promise<string> {
   const db = getDb();
   const [row] = await db
     .select({ catalogId: schemaTemplatesTable.catalogId })
@@ -207,7 +207,7 @@ async function getCatalogIdForSection(sectionId: string): Promise<string> {
   return row.catalogId;
 }
 
-async function getCatalogIdForAttribute(attributeId: string): Promise<string> {
+export async function getCatalogIdForAttribute(attributeId: string): Promise<string> {
   const db = getDb();
   const [row] = await db
     .select({ catalogId: schemaTemplatesTable.catalogId })
@@ -218,6 +218,31 @@ async function getCatalogIdForAttribute(attributeId: string): Promise<string> {
     .limit(1);
 
   if (!row) throw new ServiceError("NOT_FOUND", `Attribute "${attributeId}" not found`);
+  return row.catalogId;
+}
+
+export async function getCatalogIdForSchemaVersion(versionId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: schemaVersionsTable.catalogId })
+    .from(schemaVersionsTable)
+    .where(eq(schemaVersionsTable.id, versionId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Schema version "${versionId}" not found`);
+  return row.catalogId;
+}
+
+export async function getCatalogIdForTemplateRelationship(relationshipId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: schemaTemplatesTable.catalogId })
+    .from(schemaRelationshipsTable)
+    .innerJoin(schemaTemplatesTable, eq(schemaRelationshipsTable.fromTemplateId, schemaTemplatesTable.id))
+    .where(eq(schemaRelationshipsTable.id, relationshipId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Relationship "${relationshipId}" not found`);
   return row.catalogId;
 }
 

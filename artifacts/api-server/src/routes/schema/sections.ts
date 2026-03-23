@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as templateService from "../../services/templateService";
 import { ServiceError } from "../../lib/errors";
 import { sendSuccess, sendError } from "../../lib/response";
+import { requireCatalogRole } from "../../middleware/requireCatalogRole";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /api/schema/sections/:id
+// PATCH /api/schema/sections/:id — designer
 // ---------------------------------------------------------------------------
 
 const UpdateSectionBody = z.object({
@@ -32,48 +33,60 @@ const UpdateSectionBody = z.object({
   displayOrder: z.number().int().min(0).optional(),
 });
 
-router.patch("/:id", async (req, res): Promise<void> => {
-  const parsed = UpdateSectionBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const section = await templateService.updateSection(req.params.id, parsed.data);
-    sendSuccess(res, section);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.patch(
+  "/:id",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForSection(req.params.id)),
+  async (req, res): Promise<void> => {
+    const parsed = UpdateSectionBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const section = await templateService.updateSection(req.params.id, parsed.data);
+      sendSuccess(res, section);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// DELETE /api/schema/sections/:id
+// DELETE /api/schema/sections/:id — designer
 // ---------------------------------------------------------------------------
 
-router.delete("/:id", async (req, res): Promise<void> => {
-  try {
-    await templateService.deleteSection(req.params.id);
-    sendSuccess(res, { deleted: true });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.delete(
+  "/:id",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForSection(req.params.id)),
+  async (req, res): Promise<void> => {
+    try {
+      await templateService.deleteSection(req.params.id);
+      sendSuccess(res, { deleted: true });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// GET /api/schema/sections/:id/attributes
+// GET /api/schema/sections/:id/attributes — viewer
 // ---------------------------------------------------------------------------
 
-router.get("/:id/attributes", async (req, res): Promise<void> => {
-  try {
-    const attributes = await templateService.listAttributes(req.params.id);
-    sendSuccess(res, attributes);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.get(
+  "/:id/attributes",
+  requireCatalogRole("viewer", (req) => templateService.getCatalogIdForSection(req.params.id)),
+  async (req, res): Promise<void> => {
+    try {
+      const attributes = await templateService.listAttributes(req.params.id);
+      sendSuccess(res, attributes);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/schema/sections/:id/attributes
+// POST /api/schema/sections/:id/attributes — designer
 // ---------------------------------------------------------------------------
 
 const CreateAttributeBody = z.object({
@@ -85,43 +98,51 @@ const CreateAttributeBody = z.object({
   config: z.record(z.unknown()).nullish(),
 });
 
-router.post("/:id/attributes", async (req, res): Promise<void> => {
-  const parsed = CreateAttributeBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const attribute = await templateService.createAttribute(req.params.id, {
-      name: parsed.data.name,
-      attributeType: parsed.data.attributeType as any,
-      description: parsed.data.description ?? null,
-      required: parsed.data.required,
-      displayOrder: parsed.data.displayOrder,
-      config: parsed.data.config as any,
-    });
-    sendSuccess(res, attribute, { status: 201 });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/:id/attributes",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForSection(req.params.id)),
+  async (req, res): Promise<void> => {
+    const parsed = CreateAttributeBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const attribute = await templateService.createAttribute(req.params.id, {
+        name: parsed.data.name,
+        attributeType: parsed.data.attributeType as any,
+        description: parsed.data.description ?? null,
+        required: parsed.data.required,
+        displayOrder: parsed.data.displayOrder,
+        config: parsed.data.config as any,
+      });
+      sendSuccess(res, attribute, { status: 201 });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/schema/sections/:id/attributes/reorder
+// POST /api/schema/sections/:id/attributes/reorder — designer
 // ---------------------------------------------------------------------------
 
-router.post("/:id/attributes/reorder", async (req, res): Promise<void> => {
-  const body = z.object({ orderedIds: z.array(z.string().uuid()) }).safeParse(req.body);
-  if (!body.success) {
-    sendError(res, 422, "VALIDATION_ERROR", "orderedIds must be an array of UUIDs");
-    return;
-  }
-  try {
-    await templateService.reorderAttributes(req.params.id, body.data.orderedIds);
-    sendSuccess(res, { reordered: true });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/:id/attributes/reorder",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForSection(req.params.id)),
+  async (req, res): Promise<void> => {
+    const body = z.object({ orderedIds: z.array(z.string().uuid()) }).safeParse(req.body);
+    if (!body.success) {
+      sendError(res, 422, "VALIDATION_ERROR", "orderedIds must be an array of UUIDs");
+      return;
+    }
+    try {
+      await templateService.reorderAttributes(req.params.id, body.data.orderedIds);
+      sendSuccess(res, { reordered: true });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 export default router;

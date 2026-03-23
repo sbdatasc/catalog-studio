@@ -59,7 +59,14 @@ async function assertCatalogDraft(catalogId: string): Promise<void> {
 // Helper — get catalog_id for a relationship (from template join)
 // ---------------------------------------------------------------------------
 
-async function getCatalogIdForRelationship(
+export async function getCatalogIdForRelationship(
+  relationshipId: string,
+): Promise<string> {
+  const result = await _getCatalogIdForRelationship(relationshipId);
+  return result.catalogId;
+}
+
+async function _getCatalogIdForRelationship(
   relationshipId: string,
 ): Promise<{ catalogId: string; status: string }> {
   const db = getDb();
@@ -252,7 +259,7 @@ export async function updateRelationship(
     throw new ServiceError("NOT_FOUND", `Relationship "${id}" not found`);
   }
 
-  const { catalogId, status } = await getCatalogIdForRelationship(id);
+  const { catalogId, status } = await _getCatalogIdForRelationship(id);
   if (status !== "draft") {
     throw new ServiceError(
       "CATALOG_LOCKED",
@@ -329,7 +336,7 @@ export async function deleteRelationship(id: string): Promise<{ entryLinkCount: 
     throw new ServiceError("NOT_FOUND", `Relationship "${id}" not found`);
   }
 
-  const { status } = await getCatalogIdForRelationship(id);
+  const { status } = await _getCatalogIdForRelationship(id);
   if (status !== "draft") {
     throw new ServiceError(
       "CATALOG_LOCKED",

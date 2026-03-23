@@ -283,6 +283,18 @@ async function validateAndResolveFieldValues(
 // Entry CRUD — O-01 compliant
 // ---------------------------------------------------------------------------
 
+export async function getCatalogIdForEntry(entryId: string): Promise<string> {
+  const db = getDb();
+  const [row] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, entryId))
+    .limit(1);
+
+  if (!row) throw new ServiceError("NOT_FOUND", `Entry "${entryId}" not found`);
+  return row.catalogId;
+}
+
 export async function createEntry(input: CreateEntryInput): Promise<CatalogEntry> {
   const db = getDb();
   const snapshot = await getPublishedSchemaOrThrow(input.catalogId);

@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as catalogService from "../services/catalogService";
 import { ServiceError } from "../lib/errors";
 import { sendSuccess, sendError } from "../lib/response";
+import { requireCatalogRole } from "../middleware/requireCatalogRole";
 
 const router: IRouter = Router();
 
@@ -48,12 +49,12 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// GET /api/catalogs
+// GET /api/catalogs — filtered to user's accessible catalogs
 // ---------------------------------------------------------------------------
 
-router.get("/", async (_req, res): Promise<void> => {
+router.get("/", async (req, res): Promise<void> => {
   try {
-    const catalogs = await catalogService.listCatalogs();
+    const catalogs = await catalogService.listCatalogs(req.user!.id);
     sendSuccess(res, catalogs);
   } catch (err) {
     handleError(res, err);
@@ -61,7 +62,7 @@ router.get("/", async (_req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// POST /api/catalogs
+// POST /api/catalogs — any authenticated user can create; creator becomes catalog_admin
 // ---------------------------------------------------------------------------
 
 router.post("/", async (req, res): Promise<void> => {
@@ -74,7 +75,7 @@ router.post("/", async (req, res): Promise<void> => {
     const catalog = await catalogService.createCatalog({
       name: parsed.data.name,
       description: parsed.data.description ?? null,
-      creatorUserId: req.user?.id,
+      creatorUserId: req.user!.id,
     });
     sendSuccess(res, catalog, { status: 201 });
   } catch (err) {
@@ -83,65 +84,81 @@ router.post("/", async (req, res): Promise<void> => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/catalogs/:id
+// GET /api/catalogs/:id — viewer
 // ---------------------------------------------------------------------------
 
-router.get("/:id", async (req, res): Promise<void> => {
-  try {
-    const catalog = await catalogService.getCatalog(req.params.id);
-    sendSuccess(res, catalog);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.get(
+  "/:id",
+  requireCatalogRole("viewer", (req) => req.params.id),
+  async (req, res): Promise<void> => {
+    try {
+      const catalog = await catalogService.getCatalog(req.params.id);
+      sendSuccess(res, catalog);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// PATCH /api/catalogs/:id
+// PATCH /api/catalogs/:id — catalog_admin
 // ---------------------------------------------------------------------------
 
-router.patch("/:id", async (req, res): Promise<void> => {
-  const parsed = UpdateCatalogBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const catalog = await catalogService.updateCatalog(req.params.id, parsed.data);
-    sendSuccess(res, catalog);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.patch(
+  "/:id",
+  requireCatalogRole("catalog_admin", (req) => req.params.id),
+  async (req, res): Promise<void> => {
+    const parsed = UpdateCatalogBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const catalog = await catalogService.updateCatalog(req.params.id, parsed.data);
+      sendSuccess(res, catalog);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/catalogs/:id/transition
+// POST /api/catalogs/:id/transition — catalog_admin
 // ---------------------------------------------------------------------------
 
-router.post("/:id/transition", async (req, res): Promise<void> => {
-  const parsed = TransitionStatusBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const catalog = await catalogService.transitionStatus(req.params.id, parsed.data.status);
-    sendSuccess(res, catalog);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/:id/transition",
+  requireCatalogRole("catalog_admin", (req) => req.params.id),
+  async (req, res): Promise<void> => {
+    const parsed = TransitionStatusBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const catalog = await catalogService.transitionStatus(req.params.id, parsed.data.status);
+      sendSuccess(res, catalog);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// POST /api/catalogs/:id/duplicate
+// POST /api/catalogs/:id/duplicate — catalog_admin; current user becomes creator
 // ---------------------------------------------------------------------------
 
-router.post("/:id/duplicate", async (req, res): Promise<void> => {
-  try {
-    const catalog = await catalogService.duplicateCatalog(req.params.id);
-    sendSuccess(res, catalog, { status: 201 });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.post(
+  "/:id/duplicate",
+  requireCatalogRole("catalog_admin", (req) => req.params.id),
+  async (req, res): Promise<void> => {
+    try {
+      const catalog = await catalogService.duplicateCatalog(req.params.id, req.user!.id);
+      sendSuccess(res, catalog, { status: 201 });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 export default router;

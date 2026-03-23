@@ -3,6 +3,7 @@ import { z } from "zod";
 import * as templateService from "../../services/templateService";
 import { ServiceError } from "../../lib/errors";
 import { sendSuccess, sendError } from "../../lib/response";
+import { requireCatalogRole } from "../../middleware/requireCatalogRole";
 
 const router: IRouter = Router();
 
@@ -23,7 +24,7 @@ function handleError(res: Parameters<typeof sendError>[0], err: unknown): void {
 }
 
 // ---------------------------------------------------------------------------
-// PATCH /api/schema/attributes/:id
+// PATCH /api/schema/attributes/:id — designer
 // ---------------------------------------------------------------------------
 
 const UpdateAttributeBody = z.object({
@@ -34,31 +35,39 @@ const UpdateAttributeBody = z.object({
   config: z.record(z.unknown()).nullish(),
 });
 
-router.patch("/:id", async (req, res): Promise<void> => {
-  const parsed = UpdateAttributeBody.safeParse(req.body);
-  if (!parsed.success) {
-    sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
-    return;
-  }
-  try {
-    const attribute = await templateService.updateAttribute(req.params.id, parsed.data as any);
-    sendSuccess(res, attribute);
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.patch(
+  "/:id",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForAttribute(req.params.id)),
+  async (req, res): Promise<void> => {
+    const parsed = UpdateAttributeBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(res, 422, "VALIDATION_ERROR", parsed.error.issues[0]?.message ?? "Validation failed");
+      return;
+    }
+    try {
+      const attribute = await templateService.updateAttribute(req.params.id, parsed.data as any);
+      sendSuccess(res, attribute);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
-// DELETE /api/schema/attributes/:id
+// DELETE /api/schema/attributes/:id — designer
 // ---------------------------------------------------------------------------
 
-router.delete("/:id", async (req, res): Promise<void> => {
-  try {
-    await templateService.deleteAttribute(req.params.id);
-    sendSuccess(res, { deleted: true });
-  } catch (err) {
-    handleError(res, err);
-  }
-});
+router.delete(
+  "/:id",
+  requireCatalogRole("designer", (req) => templateService.getCatalogIdForAttribute(req.params.id)),
+  async (req, res): Promise<void> => {
+    try {
+      await templateService.deleteAttribute(req.params.id);
+      sendSuccess(res, { deleted: true });
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
 
 export default router;
