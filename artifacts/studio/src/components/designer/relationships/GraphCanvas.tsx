@@ -8,6 +8,8 @@ import {
   useEdgesState,
   useReactFlow,
   addEdge,
+  ConnectionMode,
+  ConnectionLineType,
   type Node,
   type Edge,
   type Connection,
@@ -16,6 +18,7 @@ import {
   BackgroundVariant,
   Panel,
 } from "@xyflow/react";
+import { usePermissions } from "@/hooks/usePermissions";
 import dagre from "dagre";
 import "@xyflow/react/dist/style.css";
 import { TemplateNode, type TemplateNodeData } from "./TemplateNode";
@@ -70,6 +73,7 @@ function buildFlowElements(
   relationships: RelationshipDefinition[],
   savedPositions: NodePosition[],
   isLocked: boolean,
+  catalogId: string,
   onAddRelationship: (templateId: string) => void,
   onEditRelationship: (relId: string) => void,
 ): { nodes: Node[]; edges: Edge[] } {
@@ -97,6 +101,7 @@ function buildFlowElements(
         attributeCount: t.attributeCount,
         isReferenceData: t.isReferenceData,
         isLocked,
+        catalogId,
         onAddRelationship,
       } satisfies TemplateNodeData,
     };
@@ -131,6 +136,7 @@ export function GraphCanvas({ catalogId, templates, relationships, savedPosition
   const { fitView } = useReactFlow();
   const { updateNodePositionsLocal } = useSchemaStore();
   const { openCreateRelDrawer, openEditRelDrawer, openDeleteRelModal } = useUiStore();
+  const { canEditSchema } = usePermissions(catalogId);
 
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -148,11 +154,22 @@ export function GraphCanvas({ catalogId, templates, relationships, savedPosition
     [isLocked, openEditRelDrawer],
   );
 
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      openCreateRelDrawer({
+        fromTemplateId: connection.source!,
+        toTemplateId: connection.target!,
+      });
+    },
+    [openCreateRelDrawer],
+  );
+
   const { nodes: initialNodes, edges: initialEdges } = buildFlowElements(
     templates,
     relationships,
     savedPositions,
     isLocked,
+    catalogId,
     onAddRelationship,
     onEditRelationship,
   );
@@ -167,6 +184,7 @@ export function GraphCanvas({ catalogId, templates, relationships, savedPosition
       relationships,
       savedPositions,
       isLocked,
+      catalogId,
       onAddRelationship,
       onEditRelationship,
     );
@@ -260,8 +278,12 @@ export function GraphCanvas({ catalogId, templates, relationships, savedPosition
         edges={edges}
         onNodesChange={handleNodesChange}
         onEdgesChange={handleEdgesChange}
+        onConnect={canEditSchema ? handleConnect : undefined}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        connectionMode={ConnectionMode.Loose}
+        connectionLineStyle={{ stroke: "#2563EB", strokeDasharray: "5 5" }}
+        connectionLineType={ConnectionLineType.SmoothStep}
         nodesDraggable={!isLocked}
         elementsSelectable
         fitView

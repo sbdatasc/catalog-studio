@@ -47,12 +47,13 @@ interface UiStore {
   confirmSectionDiscard: () => void;
   cancelSectionDiscard: () => void;
 
-  // Relationship drawer (D-03)
+  // Relationship drawer (D-03 / D-05)
   relDrawerMode: "closed" | "create" | "edit";
   relDrawerRelationshipId: string | null;
   relDrawerFromTemplateId: string | null;
+  relDrawerToTemplateId: string | null;
   relDrawerIsDirty: boolean;
-  openCreateRelDrawer: (opts?: { fromTemplateId?: string }) => void;
+  openCreateRelDrawer: (opts?: { fromTemplateId?: string; toTemplateId?: string }) => void;
   openEditRelDrawer: (relId: string) => void;
   closeRelDrawer: () => void;
   setRelDrawerDirty: (dirty: boolean) => void;
@@ -279,6 +280,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
   relDrawerMode: "closed",
   relDrawerRelationshipId: null,
   relDrawerFromTemplateId: null,
+  relDrawerToTemplateId: null,
   relDrawerIsDirty: false,
 
   openCreateRelDrawer: (opts = {}) => {
@@ -286,6 +288,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       relDrawerMode: "create",
       relDrawerRelationshipId: null,
       relDrawerFromTemplateId: opts.fromTemplateId ?? null,
+      relDrawerToTemplateId: opts.toTemplateId ?? null,
       relDrawerIsDirty: false,
     });
   },
@@ -297,6 +300,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       relDrawerMode: "edit",
       relDrawerRelationshipId: relId,
       relDrawerFromTemplateId: null,
+      relDrawerToTemplateId: null,
       relDrawerIsDirty: false,
     });
   },
@@ -306,6 +310,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       relDrawerMode: "closed",
       relDrawerRelationshipId: null,
       relDrawerFromTemplateId: null,
+      relDrawerToTemplateId: null,
       relDrawerIsDirty: false,
     }),
 
@@ -370,6 +375,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       relDrawerMode: "closed",
       relDrawerRelationshipId: null,
       relDrawerFromTemplateId: null,
+      relDrawerToTemplateId: null,
       relDrawerIsDirty: false,
       deleteRelModalId: null,
       activeTemplateTabId: null,

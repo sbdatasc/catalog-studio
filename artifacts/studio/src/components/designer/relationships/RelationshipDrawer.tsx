@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Layers, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +44,7 @@ export function RelationshipDrawer({ catalogId, isLocked }: Props) {
     relDrawerMode,
     relDrawerRelationshipId,
     relDrawerFromTemplateId,
+    relDrawerToTemplateId,
     relDrawerIsDirty,
     closeRelDrawer,
     setRelDrawerDirty,
@@ -68,6 +69,7 @@ export function RelationshipDrawer({ catalogId, isLocked }: Props) {
   const allTemplates = [...templates, ...referenceDataTemplates];
   const isOpen = relDrawerMode !== "closed";
   const isEdit = relDrawerMode === "edit";
+  const bothPreSet = !isEdit && !!relDrawerFromTemplateId && !!relDrawerToTemplateId;
 
   const existingRel = isEdit && relDrawerRelationshipId
     ? (relationshipsByCatalog[catalogId] ?? []).find((r) => r.id === relDrawerRelationshipId)
@@ -84,7 +86,7 @@ export function RelationshipDrawer({ catalogId, isLocked }: Props) {
       setDirection(existingRel.direction);
     } else {
       setFromTemplateId(relDrawerFromTemplateId ?? "");
-      setToTemplateId("");
+      setToTemplateId(relDrawerToTemplateId ?? "");
       setLabel("");
       setCardinality("1:N");
       setDirection("both");
@@ -184,25 +186,37 @@ export function RelationshipDrawer({ catalogId, isLocked }: Props) {
 
             <div className="space-y-1.5">
               <Label>To Template</Label>
-              <Select
-                value={toTemplateId}
-                onValueChange={(v) => { setToTemplateId(v); markDirty(); }}
-                disabled={isEdit || isLocked}
-              >
-                <SelectTrigger data-testid="select-to-template">
-                  <SelectValue placeholder="Select…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {allTemplates
-                    .filter((t) => t.id !== fromTemplateId)
-                    .map((t) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name}
-                        {t.isReferenceData ? " (Ref)" : ""}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              {bothPreSet ? (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-md border border-border bg-muted/50 text-sm font-medium text-foreground"
+                  data-testid="badge-to-template"
+                >
+                  <Layers className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="truncate">
+                    {allTemplates.find((t) => t.id === toTemplateId)?.name ?? toTemplateId}
+                  </span>
+                </div>
+              ) : (
+                <Select
+                  value={toTemplateId}
+                  onValueChange={(v) => { setToTemplateId(v); markDirty(); }}
+                  disabled={isEdit || isLocked}
+                >
+                  <SelectTrigger data-testid="select-to-template">
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {allTemplates
+                      .filter((t) => t.id !== fromTemplateId)
+                      .map((t) => (
+                        <SelectItem key={t.id} value={t.id}>
+                          {t.name}
+                          {t.isReferenceData ? " (Ref)" : ""}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
 

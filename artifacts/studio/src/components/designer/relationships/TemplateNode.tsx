@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { Layers, Plus } from "lucide-react";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export interface TemplateNodeData {
   name: string;
@@ -8,12 +9,14 @@ export interface TemplateNodeData {
   attributeCount: number;
   isReferenceData: boolean;
   isLocked: boolean;
+  catalogId: string;
   onAddRelationship: (templateId: string) => void;
   [key: string]: unknown;
 }
 
 function TemplateNodeComponent({ id, data, selected }: NodeProps) {
   const d = data as TemplateNodeData;
+  const { canEditSchema } = usePermissions(d.catalogId);
 
   return (
     <div
@@ -25,16 +28,23 @@ function TemplateNodeComponent({ id, data, selected }: NodeProps) {
       ].join(" ")}
       data-testid={`template-node-${id}`}
     >
+      {/* Target handle — always present so nodes can receive connections */}
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
+        isConnectable={canEditSchema}
+        className="!w-3 !h-3 !bg-primary !border-2 !border-background !opacity-0 group-hover:!opacity-100 !transition-opacity"
       />
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
-      />
+
+      {/* Source handle — only shown when canEditSchema */}
+      {canEditSchema && (
+        <Handle
+          type="source"
+          position={Position.Right}
+          isConnectable={true}
+          className="!w-3 !h-3 !bg-primary !border-2 !border-background !opacity-0 group-hover:!opacity-100 !transition-opacity hover:!scale-125 hover:!cursor-crosshair"
+        />
+      )}
 
       <div className="p-4">
         <div className="flex items-start gap-2">
