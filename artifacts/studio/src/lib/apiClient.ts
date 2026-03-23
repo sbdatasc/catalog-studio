@@ -487,4 +487,10 @@ export const apiClient = {
         { method: "DELETE" },
       ),
   },
+
+  graphql: (query: string, variables: Record<string, unknown>) =>
+    fetchApi<Record<string, unknown>>("/graphql", {
+      method: "POST",
+      body: JSON.stringify({ query, variables }),
+    }),
 };

@@ -7,6 +7,7 @@ import attributesRouter from "./schema/attributes";
 import relationshipsRouter from "./schema/relationships";
 import publishRouter from "./schema/publish";
 import entriesRouter from "./entries";
+import graphqlRouter from "./graphql";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,8 @@ router.use("/schema/publish", publishRouter);
 
 // Entry routes (O-01)
 router.use("/entries", entriesRouter);
+
+// GraphQL engine (G-01)
+router.use("/graphql", graphqlRouter);
 
 export default router;
