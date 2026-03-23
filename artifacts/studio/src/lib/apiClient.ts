@@ -1,5 +1,30 @@
 export type CatalogStatus = "draft" | "pilot" | "published" | "discontinued";
 
+// ---------------------------------------------------------------------------
+// O-04 — Filter types (shared with FilterPanel + entryStore)
+// ---------------------------------------------------------------------------
+
+export type FilterOperator =
+  | "eq"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "before"
+  | "after"
+  | "in"
+  | "isEmpty"
+  | "isNotEmpty";
+
+export interface EntryFilter {
+  attributeId: string;
+  operator: FilterOperator;
+  value: string | null;
+}
+
 export type AttributeType =
   | "string"
   | "text"
@@ -506,11 +531,22 @@ export const apiClient = {
 
   // Entry routes (O-01 + O-02)
   entries: {
-    list: (catalogId: string, templateId: string, page = 1, limit = 24) =>
-      fetchApi<PaginatedEntries>(
-        `/entries?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}&page=${page}&limit=${limit}`,
-        { method: "GET" },
-      ),
+    list: (catalogId: string, templateId: string, page = 1, limit = 24, filters: EntryFilter[] = []) => {
+      const params = new URLSearchParams({
+        catalogId,
+        templateId,
+        page: String(page),
+        limit: String(limit),
+      });
+      for (const f of filters) {
+        if (f.operator === "isEmpty" || f.operator === "isNotEmpty") {
+          params.set(`filter[${f.attributeId}][${f.operator}]`, "");
+        } else if (f.value !== null && f.value !== "") {
+          params.set(`filter[${f.attributeId}][${f.operator}]`, f.value);
+        }
+      }
+      return fetchApi<PaginatedEntries>(`/entries?${params.toString()}`, { method: "GET" });
+    },
     search: (catalogId: string, templateId: string, q: string, limit = 10) =>
       fetchApi<EntryListItem[]>(
         `/entries/search?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}&q=${encodeURIComponent(q)}&limit=${limit}`,

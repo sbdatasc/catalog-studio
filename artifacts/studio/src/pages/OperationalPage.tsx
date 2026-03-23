@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearchParams } from "wouter";
 import { Loader2, AlertCircle, Database, ShieldAlert } from "lucide-react";
 import { useUiStore } from "@/stores/uiStore";
 import { useSchemaStore } from "@/stores/schemaStore";
@@ -13,10 +13,12 @@ import { ContentHeader } from "@/components/operational/ContentHeader";
 import { EntryCardGrid } from "@/components/operational/EntryCardGrid";
 import { EntryTableView } from "@/components/operational/EntryTableView";
 import { SearchResultsBanner } from "@/components/operational/SearchResultsBanner";
+import { FilterPanel } from "@/components/operational/FilterPanel";
 import { loadColumnPrefs, saveColumnPrefs } from "@/components/operational/ColumnPickerPanel";
 import { apiClient } from "@/lib/apiClient";
-import type { SnapshotTemplate, EntryListItem } from "@/lib/apiClient";
+import type { SnapshotTemplate, EntryListItem, EntryFilter } from "@/lib/apiClient";
 import { TABLE_PAGE_SIZE } from "@/stores/entryStore";
+import { parseFiltersFromURL, serializeFiltersToURL, filtersToKey } from "@/utils/filterParams";
 
 interface Props {
   catalogId: string;
@@ -33,6 +35,7 @@ function useDebounce<T>(value: T, delay: number): T {
 
 export function OperationalPage({ catalogId }: Props) {
   const [, navigate] = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { role, canCreateEntries } = usePermissions(catalogId);
 
   useEffect(() => {
@@ -68,8 +71,17 @@ export function OperationalPage({ catalogId }: Props) {
   const [isSearching, setIsSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<EntryListItem[] | null>(null);
   const [tablePage, setTablePage] = useState(1);
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
 
   const debouncedSearch = useDebounce(searchQuery, 300);
+
+  // Derive active filters from URL
+  const activeFilters = useMemo(() => parseFiltersFromURL(searchParams), [searchParams]);
+  const filtersKey = useMemo(() => filtersToKey(activeFilters), [activeFilters]);
+
+  function handleFiltersChange(newFilters: EntryFilter[]) {
+    setSearchParams(serializeFiltersToURL(newFilters, searchParams));
+  }
 
   const snapshot = publishedSchemasByCatalog[catalogId];
   const isLoading = publishedSchemaLoading[catalogId] ?? true;
@@ -95,14 +107,16 @@ export function OperationalPage({ catalogId }: Props) {
     }
   }, [templateTabs, activeTemplateTabId, setActiveTemplateTab]);
 
+  // Re-fetch when template tab or filters change
   useEffect(() => {
     if (activeTemplateTabId) {
-      fetchEntries(catalogId, activeTemplateTabId);
+      setTablePage(1);
+      fetchEntries(catalogId, activeTemplateTabId, activeFilters, 1, TABLE_PAGE_SIZE);
       setSearchQuery("");
       setSearchResults(null);
-      setTablePage(1);
     }
-  }, [activeTemplateTabId, catalogId, fetchEntries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTemplateTabId, catalogId, filtersKey]);
 
   // Debounced search
   useEffect(() => {
@@ -158,19 +172,27 @@ export function OperationalPage({ catalogId }: Props) {
     navigate(`/catalogs/${catalogId}/operational/${activeTemplate.id}/entries/${entryId}`);
   }
 
-  // Table page navigation (loads fresh pages from API)
+  // Table page navigation — respects active filters
   async function handleTableNextPage() {
     if (!activeTemplateTabId || !pagination?.hasMore) return;
     const nextPage = tablePage + 1;
     setTablePage(nextPage);
-    // Temporarily fetch table page from API (50 rows) — simplified: use entryStore
-    await loadMoreEntries(catalogId, activeTemplateTabId);
+    await fetchEntries(catalogId, activeTemplateTabId, activeFilters, nextPage, TABLE_PAGE_SIZE);
   }
 
   async function handleTablePrevPage() {
-    if (tablePage <= 1) return;
-    setTablePage((p) => Math.max(1, p - 1));
+    if (!activeTemplateTabId || tablePage <= 1) return;
+    const prevPage = tablePage - 1;
+    setTablePage(prevPage);
+    await fetchEntries(catalogId, activeTemplateTabId, activeFilters, prevPage, TABLE_PAGE_SIZE);
   }
+
+  // Close filter panel when switching to card view
+  useEffect(() => {
+    if (viewMode === "card" && isFilterPanelOpen) {
+      setIsFilterPanelOpen(false);
+    }
+  }, [viewMode, isFilterPanelOpen]);
 
   if (isLoading) {
     return (
@@ -199,6 +221,8 @@ export function OperationalPage({ catalogId }: Props) {
       </div>
     );
   }
+
+  const showFilterPanel = isFilterPanelOpen && viewMode === "table" && !!activeTemplate;
 
   return (
     <div className="flex flex-col h-screen overflow-hidden">
@@ -272,74 +296,103 @@ export function OperationalPage({ catalogId }: Props) {
               onNewEntry={openEntryForm}
               selectedColumns={selectedColumns}
               onColumnsChange={handleColumnsChange}
+              filterCount={activeFilters.length}
+              isFilterOpen={isFilterPanelOpen}
+              onToggleFilter={() => setIsFilterPanelOpen((v) => !v)}
             />
 
-            <div className="flex-1 overflow-y-auto px-6 py-5">
-              {searchResults !== null && searchQuery && (
-                <SearchResultsBanner
-                  query={searchQuery}
-                  count={searchResults.length}
-                  onClear={() => {
-                    setSearchQuery("");
-                    setSearchResults(null);
-                  }}
-                />
-              )}
+            {/* Main content area — side-by-side table + filter panel */}
+            <div className="flex-1 overflow-hidden flex">
+              {/* Entry list area */}
+              <div className={`flex flex-col overflow-y-auto px-6 py-5 ${showFilterPanel ? "flex-1 min-w-0" : "flex-1"}`}>
+                {searchResults !== null && searchQuery && (
+                  <SearchResultsBanner
+                    query={searchQuery}
+                    count={searchResults.length}
+                    onClear={() => {
+                      setSearchQuery("");
+                      setSearchResults(null);
+                    }}
+                  />
+                )}
 
-              {activeEntriesLoading && allEntries.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : displayedEntries.length === 0 ? (
-                searchResults !== null ? (
-                  <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
-                    <p className="text-muted-foreground text-sm font-medium">
-                      No entries matching "{searchQuery}"
-                    </p>
-                    <button
-                      onClick={() => {
-                        setSearchQuery("");
-                        setSearchResults(null);
-                      }}
-                      className="text-sm text-primary hover:underline mt-2"
-                    >
-                      Clear search
-                    </button>
+                {activeEntriesLoading && allEntries.length === 0 ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
                   </div>
-                ) : (
-                  <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
-                    <p className="text-muted-foreground text-sm font-medium">No entries yet</p>
-                    {canCreateEntries && (
-                      <p className="text-muted-foreground text-sm mt-1">
-                        Click "New Entry" to add the first one.
+                ) : displayedEntries.length === 0 ? (
+                  searchResults !== null ? (
+                    <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
+                      <p className="text-muted-foreground text-sm font-medium">
+                        No entries matching "{searchQuery}"
                       </p>
-                    )}
-                  </div>
-                )
-              ) : viewMode === "card" ? (
-                <EntryCardGrid
-                  entries={displayedEntries}
-                  template={activeTemplate}
-                  catalogId={catalogId}
-                  hasMore={searchResults === null && (pagination?.hasMore ?? false)}
-                  loadingMore={activeEntriesLoading}
-                  onLoadMore={() => loadMoreEntries(catalogId, activeTemplateTabId!)}
-                  onEdit={handleEdit}
-                  snapshot={snapshot ?? undefined}
-                />
-              ) : (
-                <EntryTableView
-                  entries={displayedEntries}
-                  template={activeTemplate}
-                  catalogId={catalogId}
-                  selectedColumns={selectedColumns}
-                  total={pagination?.total ?? displayedEntries.length}
-                  page={tablePage}
-                  limit={TABLE_PAGE_SIZE}
-                  onNextPage={handleTableNextPage}
-                  onPrevPage={handleTablePrevPage}
-                  onEdit={handleEdit}
-                />
+                      <button
+                        onClick={() => {
+                          setSearchQuery("");
+                          setSearchResults(null);
+                        }}
+                        className="text-sm text-primary hover:underline mt-2"
+                      >
+                        Clear search
+                      </button>
+                    </div>
+                  ) : activeFilters.length > 0 ? (
+                    <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
+                      <p className="text-muted-foreground text-sm font-medium">No entries match the current filters</p>
+                      <button
+                        onClick={() => handleFiltersChange([])}
+                        className="text-sm text-primary hover:underline mt-2"
+                      >
+                        Clear filters
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
+                      <p className="text-muted-foreground text-sm font-medium">No entries yet</p>
+                      {canCreateEntries && (
+                        <p className="text-muted-foreground text-sm mt-1">
+                          Click "New Entry" to add the first one.
+                        </p>
+                      )}
+                    </div>
+                  )
+                ) : viewMode === "card" ? (
+                  <EntryCardGrid
+                    entries={displayedEntries}
+                    template={activeTemplate}
+                    catalogId={catalogId}
+                    hasMore={searchResults === null && (pagination?.hasMore ?? false)}
+                    loadingMore={activeEntriesLoading}
+                    onLoadMore={() => loadMoreEntries(catalogId, activeTemplateTabId!)}
+                    onEdit={handleEdit}
+                    snapshot={snapshot ?? undefined}
+                  />
+                ) : (
+                  <EntryTableView
+                    entries={displayedEntries}
+                    template={activeTemplate}
+                    catalogId={catalogId}
+                    selectedColumns={selectedColumns}
+                    total={pagination?.total ?? displayedEntries.length}
+                    page={tablePage}
+                    limit={TABLE_PAGE_SIZE}
+                    onNextPage={handleTableNextPage}
+                    onPrevPage={handleTablePrevPage}
+                    onEdit={handleEdit}
+                  />
+                )}
+              </div>
+
+              {/* Filter panel */}
+              {showFilterPanel && (
+                <div className="w-72 shrink-0 overflow-hidden border-l border-border flex flex-col">
+                  <FilterPanel
+                    template={activeTemplate}
+                    filters={activeFilters}
+                    onFiltersChange={handleFiltersChange}
+                    onClose={() => setIsFilterPanelOpen(false)}
+                  />
+                </div>
               )}
             </div>
           </div>

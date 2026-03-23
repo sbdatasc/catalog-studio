@@ -6,6 +6,7 @@ import {
   type ApiError,
   type PaginatedEntries,
   type EntryLinkInstance,
+  type EntryFilter,
 } from "@/lib/apiClient";
 
 interface PaginationState {
@@ -20,7 +21,7 @@ interface EntryStore {
   entriesError: Record<string, ApiError | null>;
   paginationByTemplate: Record<string, PaginationState>;
 
-  fetchEntries: (catalogId: string, templateId: string) => Promise<void>;
+  fetchEntries: (catalogId: string, templateId: string, filters?: EntryFilter[], page?: number, limit?: number) => Promise<void>;
   loadMoreEntries: (catalogId: string, templateId: string) => Promise<void>;
   addEntry: (templateId: string, entry: CatalogEntry) => void;
   updateEntry: (entry: CatalogEntry) => void;
@@ -60,14 +61,14 @@ const initialState = {
 export const useEntryStore = create<EntryStore>((set, get) => ({
   ...initialState,
 
-  fetchEntries: async (catalogId: string, templateId: string) => {
+  fetchEntries: async (catalogId: string, templateId: string, filters: EntryFilter[] = [], page = 1, limit = CARD_PAGE_SIZE) => {
     const key = templateId;
     set((s) => ({
       entriesLoading: { ...s.entriesLoading, [key]: true },
       entriesError: { ...s.entriesError, [key]: null },
     }));
 
-    const result = await apiClient.entries.list(catalogId, templateId, 1, CARD_PAGE_SIZE);
+    const result = await apiClient.entries.list(catalogId, templateId, page, limit, filters);
 
     if (result.error) {
       set((s) => ({
@@ -78,6 +79,7 @@ export const useEntryStore = create<EntryStore>((set, get) => ({
     }
 
     const paginated = result.data as PaginatedEntries;
+    const totalLoaded = paginated.entries.length;
     set((s) => ({
       entriesLoading: { ...s.entriesLoading, [key]: false },
       entriesByTemplate: { ...s.entriesByTemplate, [key]: paginated.entries },
@@ -86,7 +88,7 @@ export const useEntryStore = create<EntryStore>((set, get) => ({
         [key]: {
           page: paginated.page,
           total: paginated.total,
-          hasMore: paginated.entries.length < paginated.total,
+          hasMore: totalLoaded < paginated.total,
         },
       },
     }));

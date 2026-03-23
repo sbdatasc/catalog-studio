@@ -1,4 +1,4 @@
-import { eq, and, ilike, desc, sql, or } from "drizzle-orm";
+import { eq, and, ilike, desc, sql, or, inArray } from "drizzle-orm";
 import {
   catalogEntriesTable,
   catalogFieldValuesTable,
@@ -80,6 +80,157 @@ export interface LinkEntriesInput {
   fromEntryId: string;
   toEntryId: string;
   relationshipId: string;
+}
+
+// ---------------------------------------------------------------------------
+// O-04 — Filter types
+// ---------------------------------------------------------------------------
+
+export type FilterOperator =
+  | "eq"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "before"
+  | "after"
+  | "in"
+  | "isEmpty"
+  | "isNotEmpty";
+
+export const FILTER_OPERATORS: FilterOperator[] = [
+  "eq",
+  "contains",
+  "startsWith",
+  "endsWith",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "before",
+  "after",
+  "in",
+  "isEmpty",
+  "isNotEmpty",
+];
+
+export interface EntryFilter {
+  attributeId: string;
+  operator: FilterOperator;
+  value: string | null;
+}
+
+function matchesOperator(valueText: string, operator: FilterOperator, filterValue: string): boolean {
+  const v = valueText.toLowerCase();
+  const f = filterValue.toLowerCase();
+  switch (operator) {
+    case "eq":
+      return v === f;
+    case "contains":
+      return v.includes(f);
+    case "startsWith":
+      return v.startsWith(f);
+    case "endsWith":
+      return v.endsWith(f);
+    case "gt": {
+      const n = parseFloat(valueText);
+      const fn = parseFloat(filterValue);
+      return !isNaN(n) && !isNaN(fn) && n > fn;
+    }
+    case "gte": {
+      const n = parseFloat(valueText);
+      const fn = parseFloat(filterValue);
+      return !isNaN(n) && !isNaN(fn) && n >= fn;
+    }
+    case "lt": {
+      const n = parseFloat(valueText);
+      const fn = parseFloat(filterValue);
+      return !isNaN(n) && !isNaN(fn) && n < fn;
+    }
+    case "lte": {
+      const n = parseFloat(valueText);
+      const fn = parseFloat(filterValue);
+      return !isNaN(n) && !isNaN(fn) && n <= fn;
+    }
+    case "before":
+      return new Date(valueText) < new Date(filterValue);
+    case "after":
+      return new Date(valueText) > new Date(filterValue);
+    case "in": {
+      const vals = filterValue.split(",").map((s) => s.trim().toLowerCase());
+      return vals.includes(v);
+    }
+    default:
+      return true;
+  }
+}
+
+async function applyEntryFilter(
+  entryIds: string[],
+  filter: EntryFilter,
+  db: ReturnType<typeof getDb>,
+): Promise<string[]> {
+  if (entryIds.length === 0) return [];
+
+  const { attributeId, operator, value } = filter;
+
+  if (operator === "isEmpty") {
+    const hasValues = await db
+      .select({ entryId: catalogFieldValuesTable.entryId })
+      .from(catalogFieldValuesTable)
+      .where(
+        and(
+          inArray(catalogFieldValuesTable.entryId, entryIds),
+          eq(catalogFieldValuesTable.attributeId, attributeId),
+          sql`${catalogFieldValuesTable.valueText} IS NOT NULL`,
+        ),
+      );
+    const hasSet = new Set(hasValues.map((r) => r.entryId));
+    return entryIds.filter((id) => !hasSet.has(id));
+  }
+
+  if (operator === "isNotEmpty") {
+    const hasValues = await db
+      .select({ entryId: catalogFieldValuesTable.entryId })
+      .from(catalogFieldValuesTable)
+      .where(
+        and(
+          inArray(catalogFieldValuesTable.entryId, entryIds),
+          eq(catalogFieldValuesTable.attributeId, attributeId),
+          sql`${catalogFieldValuesTable.valueText} IS NOT NULL`,
+        ),
+      );
+    const hasSet = new Set(hasValues.map((r) => r.entryId));
+    return entryIds.filter((id) => hasSet.has(id));
+  }
+
+  if (value === null || value === "") return entryIds;
+
+  const valueRows = await db
+    .select({
+      entryId: catalogFieldValuesTable.entryId,
+      valueText: catalogFieldValuesTable.valueText,
+    })
+    .from(catalogFieldValuesTable)
+    .where(
+      and(
+        inArray(catalogFieldValuesTable.entryId, entryIds),
+        eq(catalogFieldValuesTable.attributeId, attributeId),
+      ),
+    );
+
+  const matching = new Set<string>();
+  for (const row of valueRows) {
+    if (row.valueText === null) continue;
+    if (matchesOperator(row.valueText, operator, value)) {
+      matching.add(row.entryId);
+    }
+  }
+
+  return entryIds.filter((id) => matching.has(id));
 }
 
 // ---------------------------------------------------------------------------
@@ -450,23 +601,39 @@ export async function listEntries(
   templateId: string,
   page = 1,
   limit = 24,
+  filters: EntryFilter[] = [],
 ): Promise<PaginatedEntries> {
   const db = getDb();
   const safePage = Math.max(1, page);
   const safeLimit = Math.min(Math.max(1, limit), 100);
-  const offset = (safePage - 1) * safeLimit;
 
-  const [totalResult] = await db
-    .select({ count: sql<number>`count(*)::int` })
+  // Fetch all entry IDs for this catalog + template (in display order)
+  const allIdRows = await db
+    .select({ id: catalogEntriesTable.id })
     .from(catalogEntriesTable)
     .where(
       and(
         eq(catalogEntriesTable.catalogId, catalogId),
         eq(catalogEntriesTable.templateId, templateId),
       ),
-    );
+    )
+    .orderBy(desc(catalogEntriesTable.updatedAt));
 
-  const total = totalResult?.count ?? 0;
+  let entryIds = allIdRows.map((r) => r.id);
+
+  // Apply filters sequentially — AND logic
+  for (const filter of filters) {
+    entryIds = await applyEntryFilter(entryIds, filter, db);
+    if (entryIds.length === 0) break;
+  }
+
+  const total = entryIds.length;
+  const offset = (safePage - 1) * safeLimit;
+  const pageIds = entryIds.slice(offset, offset + safeLimit);
+
+  if (pageIds.length === 0) {
+    return { entries: [], total, page: safePage, limit: safeLimit };
+  }
 
   const rows = await db
     .select({
@@ -478,18 +645,14 @@ export async function listEntries(
       updatedAt: catalogEntriesTable.updatedAt,
     })
     .from(catalogEntriesTable)
-    .where(
-      and(
-        eq(catalogEntriesTable.catalogId, catalogId),
-        eq(catalogEntriesTable.templateId, templateId),
-      ),
-    )
-    .orderBy(desc(catalogEntriesTable.updatedAt))
-    .limit(safeLimit)
-    .offset(offset);
+    .where(inArray(catalogEntriesTable.id, pageIds));
+
+  // Restore the original order (inArray loses ordering)
+  const rowMap = new Map(rows.map((r) => [r.id, r]));
+  const orderedRows = pageIds.map((id) => rowMap.get(id)).filter(Boolean) as typeof rows;
 
   return {
-    entries: rows.map((r) => ({
+    entries: orderedRows.map((r) => ({
       id: r.id,
       catalogId: r.catalogId,
       templateId: r.templateId,

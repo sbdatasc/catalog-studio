@@ -7,6 +7,8 @@ import { logger } from "./lib/logger";
 
 const app: Express = express();
 
+app.set("query parser", "extended");
+
 app.use(
   pinoHttp({
     logger,

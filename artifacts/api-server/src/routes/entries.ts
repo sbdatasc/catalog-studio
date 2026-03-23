@@ -1,6 +1,8 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
 import * as entryService from "../services/entryService";
+import type { EntryFilter } from "../services/entryService";
+import { FILTER_OPERATORS } from "../services/entryService";
 import { ServiceError } from "../lib/errors";
 import { sendSuccess, sendError } from "../lib/response";
 import { requireCatalogRole } from "../middleware/requireCatalogRole";
@@ -44,7 +46,26 @@ const ListEntriesQuery = z.object({
     .optional()
     .transform((v) => (v ? parseInt(v, 10) : 24))
     .pipe(z.number().int().min(1).max(100)),
+  filter: z.record(z.string(), z.record(z.string(), z.string())).optional().default({}),
 });
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function parseFiltersFromQuery(raw: Record<string, Record<string, string>>): EntryFilter[] {
+  const filters: EntryFilter[] = [];
+  for (const [attributeId, ops] of Object.entries(raw)) {
+    if (!UUID_RE.test(attributeId)) continue;
+    for (const [operator, value] of Object.entries(ops)) {
+      if (!FILTER_OPERATORS.includes(operator as typeof FILTER_OPERATORS[number])) continue;
+      filters.push({
+        attributeId,
+        operator: operator as EntryFilter["operator"],
+        value: value === "" ? null : value,
+      });
+    }
+  }
+  return filters;
+}
 
 const SearchEntriesQuery = z.object({
   catalogId: z.string().uuid("catalogId must be a valid UUID"),
@@ -146,8 +167,9 @@ router.get(
     }
 
     try {
-      const { catalogId, templateId, page, limit } = parsed.data;
-      const result = await entryService.listEntries(catalogId, templateId, page, limit);
+      const { catalogId, templateId, page, limit, filter } = parsed.data;
+      const filters = parseFiltersFromQuery(filter);
+      const result = await entryService.listEntries(catalogId, templateId, page, limit, filters);
       sendSuccess(res, result);
     } catch (err) {
       handleServiceError(res, err);

@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react";
-import { Search, X, LayoutGrid, Table, Columns3, Plus, Loader2 } from "lucide-react";
+import { Search, X, LayoutGrid, Table, Columns3, Plus, Loader2, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUiStore } from "@/stores/uiStore";
@@ -19,6 +19,9 @@ interface Props {
   onNewEntry: () => void;
   selectedColumns: string[];
   onColumnsChange: (ids: string[]) => void;
+  filterCount?: number;
+  isFilterOpen?: boolean;
+  onToggleFilter?: () => void;
 }
 
 export function ContentHeader({
@@ -32,6 +35,9 @@ export function ContentHeader({
   onNewEntry,
   selectedColumns,
   onColumnsChange,
+  filterCount = 0,
+  isFilterOpen = false,
+  onToggleFilter,
 }: Props) {
   const viewMode = useUiStore((s) => s.entryListViewMode);
   const setViewMode = useUiStore((s) => s.setEntryListViewMode);
@@ -137,6 +143,24 @@ export function ContentHeader({
               />
             )}
           </div>
+        )}
+
+        {viewMode === "table" && onToggleFilter && (
+          <Button
+            variant={isFilterOpen ? "secondary" : "outline"}
+            size="sm"
+            onClick={onToggleFilter}
+            className={cn("h-9 gap-1.5 relative", isFilterOpen && "ring-1 ring-primary/30")}
+            data-testid="filter-button"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            Filter
+            {filterCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                {filterCount}
+              </span>
+            )}
+          </Button>
         )}
 
         {canCreateEntries && (
