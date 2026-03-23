@@ -10,12 +10,17 @@ export interface CatalogStore {
   addCatalog: (c: Catalog) => void;
   updateCatalog: (c: Catalog) => void;
   removeCatalog: (id: string) => void;
+  reset: () => void;
 }
 
-export const useCatalogStore = create<CatalogStore>((set) => ({
-  catalogs: [],
+const initialState = {
+  catalogs: [] as Catalog[],
   catalogsLoading: true,
-  catalogsError: null,
+  catalogsError: null as ApiError | null,
+};
+
+export const useCatalogStore = create<CatalogStore>((set) => ({
+  ...initialState,
 
   fetchCatalogs: async () => {
     set({ catalogsLoading: true, catalogsError: null });
@@ -44,4 +49,6 @@ export const useCatalogStore = create<CatalogStore>((set) => ({
       catalogs: state.catalogs.filter((c) => c.id !== id),
     }));
   },
+
+  reset: () => set(initialState),
 }));

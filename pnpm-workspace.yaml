@@ -15,10 +15,10 @@ catalog:
   '@types/node': ^25.3.3
   '@types/react': ^19.2.0
   '@types/react-dom': ^19.2.0
-  '@vitejs/plugin-react': ^5.0.4
+  '@vitejs/plugin-react': 5.1.4
   class-variance-authority: ^0.7.1
   clsx: 2.1.1
-  drizzle-orm: ^0.45.1
+  drizzle-orm: 0.45.1
   framer-motion: ^12.23.24
   lucide-react: 0.545.0
   react: 19.1.0
