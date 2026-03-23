@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
+import authRouter from "./auth";
 import catalogsRouter from "./catalogs";
 import templatesRouter from "./schema/templates";
 import sectionsRouter from "./schema/sections";
@@ -12,6 +13,9 @@ import graphqlRouter from "./graphql";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+
+// Auth routes (A-01)
+router.use("/auth", authRouter);
 
 // Catalog routes
 router.use("/catalogs", catalogsRouter);

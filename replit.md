@@ -74,6 +74,15 @@ The project is structured as a pnpm workspace monorepo.
 - REST routes: `POST /api/entries`, `GET /api/entries`, `GET /api/entries/search`, `PATCH /api/entries/:id`, `DELETE /api/entries/:id`.
 - Frontend: `OperationalPage.tsx` with tabbed template navigation, card/table view toggle, debounced search. `EntryForm.tsx` with `SectionAccordion`, 8 typed field controls in `components/operational/fields/`. `entryStore.ts` (paginated entry lists, activeEntry, linksByEntry). `uiStore.ts` additions: activeTemplateTabId, isEntryFormOpen, entryListViewMode.
 
+**A-01 User Authentication (JWT + HttpOnly Cookie Refresh Tokens):**
+- **Backend:** `authService.ts` (register, login, refresh, logout, getMe, bootstrapAdmin). `jwt.ts` (HS256, 15-min access tokens). `rateLimiter.ts` (5 attempts/15 min per email, in-memory). `routes/auth.ts` (POST /api/auth/register|login|refresh|logout; GET /api/auth/me).
+- **Database (migration 004):** `users` table (email UNIQUE, password_hash bcrypt-12, display_name, system_role, is_active). `refresh_tokens` table (user_id FK→users CASCADE, token_hash SHA-256 for fast lookup, expires_at 7 days).
+- **Token format:** Access token = 15-min JWT in memory; Refresh token = SHA-256 hash stored in DB, raw token in HttpOnly SameSite=Strict cookie. Each refresh rotates the token.
+- **Bootstrap:** `bootstrapAdmin()` called on startup — creates platform_admin from ADMIN_EMAIL/ADMIN_PASSWORD env vars if no admin exists.
+- **Env vars:** JWT_SECRET (≥32 chars), ADMIN_EMAIL, ADMIN_PASSWORD.
+- **Frontend:** `authStore.ts` (Zustand — user, accessToken, isAuthenticated, login/register/logout/refresh/reset). `ProtectedRoute.tsx` (calls refresh() on mount, spinner while checking, redirects to /login). `LoginPage.tsx` / `RegisterPage.tsx`. All `fetchApi` calls inject `Authorization: Bearer <token>` lazily from authStore. `UserMenu` component added to CatalogsPage, DesignerNav, OperationalNav, GraphQLNav headers.
+- **App.tsx routing:** /login, /register are public; all /catalogs/* routes are wrapped in ProtectedRoute.
+
 **G-02 Embedded GraphiQL Playground:**
 - Route `/catalogs/:catalogId/graphql` renders `GraphQLPage.tsx` — full-height GraphiQL editor with the catalog's GraphQL endpoint pre-configured.
 - `createCatalogFetcher` auto-injects `catalogId` variable into all query requests.

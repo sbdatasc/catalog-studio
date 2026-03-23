@@ -3,6 +3,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { usePublishStore } from "@/stores/publishStore";
 import { useEntryStore } from "@/stores/entryStore";
+import { useAuthStore } from "@/stores/authStore";
 
 export function resetAllStores(): void {
   useCatalogStore.getState().reset();
@@ -10,4 +11,5 @@ export function resetAllStores(): void {
   useSchemaStore.getState().reset();
   usePublishStore.getState().reset();
   useEntryStore.getState().reset();
+  useAuthStore.getState().reset();
 }

@@ -11,6 +11,9 @@ import { PublishPage } from "@/pages/PublishPage";
 import { OperationalPage } from "@/pages/OperationalPage";
 import { EntryDetailPage } from "@/pages/EntryDetailPage";
 import { GraphQLPage } from "@/pages/GraphQLPage";
+import { LoginPage } from "@/pages/LoginPage";
+import { RegisterPage } from "@/pages/RegisterPage";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -34,27 +37,43 @@ function CatalogRootRedirect({ params }: { params: { catalogId: string } }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/catalogs" component={CatalogsPage} />
+      {/* Public routes */}
+      <Route path="/login" component={LoginPage} />
+      <Route path="/register" component={RegisterPage} />
+
+      {/* Protected catalog routes */}
+      <Route
+        path="/catalogs"
+        component={() => (
+          <ProtectedRoute>
+            <CatalogsPage />
+          </ProtectedRoute>
+        )}
+      />
 
       {/* Template detail pages */}
       <Route
         path="/catalogs/:catalogId/designer/templates/:templateId"
         component={({ params }) => (
-          <TemplateDetailPage
-            catalogId={params.catalogId}
-            templateId={params.templateId}
-            tabContext="templates"
-          />
+          <ProtectedRoute>
+            <TemplateDetailPage
+              catalogId={params.catalogId}
+              templateId={params.templateId}
+              tabContext="templates"
+            />
+          </ProtectedRoute>
         )}
       />
       <Route
         path="/catalogs/:catalogId/designer/reference-data/:templateId"
         component={({ params }) => (
-          <TemplateDetailPage
-            catalogId={params.catalogId}
-            templateId={params.templateId}
-            tabContext="reference-data"
-          />
+          <ProtectedRoute>
+            <TemplateDetailPage
+              catalogId={params.catalogId}
+              templateId={params.templateId}
+              tabContext="reference-data"
+            />
+          </ProtectedRoute>
         )}
       />
 
@@ -62,48 +81,72 @@ function Router() {
       <Route
         path="/catalogs/:catalogId/designer/relationships"
         component={({ params }) => (
-          <RelationshipsPage catalogId={params.catalogId} />
+          <ProtectedRoute>
+            <RelationshipsPage catalogId={params.catalogId} />
+          </ProtectedRoute>
         )}
       />
 
       {/* Publish page (D-04) */}
       <Route
         path="/catalogs/:catalogId/designer/publish"
-        component={({ params }) => <PublishPage catalogId={params.catalogId} />}
+        component={({ params }) => (
+          <ProtectedRoute>
+            <PublishPage catalogId={params.catalogId} />
+          </ProtectedRoute>
+        )}
       />
 
       {/* Designer grid pages */}
       <Route
         path="/catalogs/:catalogId/designer/templates"
-        component={({ params }) => <DesignerPage catalogId={params.catalogId} tab="templates" />}
+        component={({ params }) => (
+          <ProtectedRoute>
+            <DesignerPage catalogId={params.catalogId} tab="templates" />
+          </ProtectedRoute>
+        )}
       />
       <Route
         path="/catalogs/:catalogId/designer/reference-data"
-        component={({ params }) => <DesignerPage catalogId={params.catalogId} tab="reference-data" />}
+        component={({ params }) => (
+          <ProtectedRoute>
+            <DesignerPage catalogId={params.catalogId} tab="reference-data" />
+          </ProtectedRoute>
+        )}
       />
 
       {/* Operational mode — entry detail/edit (O-02) */}
       <Route
         path="/catalogs/:catalogId/operational/:templateId/entries/:entryId"
         component={({ params }) => (
-          <EntryDetailPage
-            catalogId={params.catalogId}
-            templateId={params.templateId}
-            entryId={params.entryId}
-          />
+          <ProtectedRoute>
+            <EntryDetailPage
+              catalogId={params.catalogId}
+              templateId={params.templateId}
+              entryId={params.entryId}
+            />
+          </ProtectedRoute>
         )}
       />
 
       {/* Operational mode (O-01) */}
       <Route
         path="/catalogs/:catalogId/operational"
-        component={({ params }) => <OperationalPage catalogId={params.catalogId} />}
+        component={({ params }) => (
+          <ProtectedRoute>
+            <OperationalPage catalogId={params.catalogId} />
+          </ProtectedRoute>
+        )}
       />
 
       {/* GraphQL playground (G-02) */}
       <Route
         path="/catalogs/:catalogId/graphql"
-        component={({ params }) => <GraphQLPage catalogId={params.catalogId} />}
+        component={({ params }) => (
+          <ProtectedRoute>
+            <GraphQLPage catalogId={params.catalogId} />
+          </ProtectedRoute>
+        )}
       />
 
       <Route path="/catalogs/:catalogId/designer" component={CatalogRootRedirect} />

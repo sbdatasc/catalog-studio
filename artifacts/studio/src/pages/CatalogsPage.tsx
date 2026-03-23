@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Plus, Pencil, Copy, ChevronRight, Database, AlertCircle, Loader2 } from "lucide-react";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -401,6 +402,8 @@ export function CatalogsPage() {
           <span className="font-display font-semibold text-lg text-foreground">
             Data Catalog Studio
           </span>
+          <div className="flex-1" />
+          <UserMenu />
         </div>
       </div>
 

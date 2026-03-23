@@ -259,12 +259,22 @@ export interface ApiResponse<T> {
 
 const BASE = "/api";
 
+export function getApiBase(): string {
+  return BASE;
+}
+
 async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
+  // Lazily import to avoid circular dependency
+  const { useAuthStore } = await import("@/stores/authStore");
+  const accessToken = useAuthStore.getState().accessToken;
+
   try {
     const res = await fetch(`${BASE}${path}`, {
       ...options,
+      credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         ...options.headers,
       },
     });

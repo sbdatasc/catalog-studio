@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { openDatabase, closeDatabase } from "./db/connection";
+import { bootstrapAdmin } from "./services/authService";
 
 const rawPort = process.env["PORT"];
 
@@ -19,6 +20,7 @@ if (Number.isNaN(port) || port <= 0) {
 async function main() {
   try {
     await openDatabase();
+    await bootstrapAdmin();
   } catch (err) {
     logger.error({ err }, "Database initialisation failed — halting");
     process.exit(1);

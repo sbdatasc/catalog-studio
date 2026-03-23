@@ -1,5 +1,6 @@
 import { Link } from "wouter";
 import { Database, ChevronLeft } from "lucide-react";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 interface Props {
   catalogId: string;
@@ -47,7 +48,9 @@ export function GraphQLNav({ catalogId, catalogName }: Props) {
         </button>
       </div>
 
-      <div className="w-[160px]" />
+      <div className="flex items-center justify-end w-[160px]">
+        <UserMenu />
+      </div>
     </div>
   );
 }

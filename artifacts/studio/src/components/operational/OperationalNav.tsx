@@ -3,6 +3,7 @@ import { Database, ChevronLeft } from "lucide-react";
 import type { SnapshotTemplate } from "@/lib/apiClient";
 import { useUiStore } from "@/stores/uiStore";
 import { cn } from "@/lib/utils";
+import { UserMenu } from "@/components/auth/UserMenu";
 
 interface Props {
   catalogId: string;
@@ -65,7 +66,9 @@ export function OperationalNav({ catalogId, catalogName, tabs }: Props) {
           </Link>
         </div>
 
-        <div className="w-[160px]" />
+        <div className="flex items-center justify-end w-[160px]">
+          <UserMenu />
+        </div>
       </div>
 
       {sortedTabs.length > 0 && (
