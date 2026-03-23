@@ -263,23 +263,36 @@ export function getApiBase(): string {
   return BASE;
 }
 
+async function doFetch(path: string, token: string | null, options: RequestInit): Promise<Response> {
+  return fetch(`${BASE}${path}`, {
+    ...options,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...options.headers,
+    },
+  });
+}
+
 async function fetchApi<T>(path: string, options: RequestInit = {}): Promise<ApiResponse<T>> {
   // Lazily import to avoid circular dependency
   const { useAuthStore } = await import("@/stores/authStore");
-  const accessToken = useAuthStore.getState().accessToken;
 
   try {
-    const res = await fetch(`${BASE}${path}`, {
-      ...options,
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-        ...options.headers,
-      },
-    });
+    let accessToken = useAuthStore.getState().accessToken;
+    let res = await doFetch(path, accessToken, options);
+    let json = await res.json();
 
-    const json = await res.json();
+    // Token expiry interceptor (A-02): silently refresh and retry once
+    if (!res.ok && json?.error?.details?.code === "AUTH_TOKEN_EXPIRED") {
+      const refreshed = await useAuthStore.getState().refresh();
+      if (refreshed) {
+        accessToken = useAuthStore.getState().accessToken;
+        res = await doFetch(path, accessToken, options);
+        json = await res.json();
+      }
+    }
 
     if (!res.ok) {
       return {

@@ -9,13 +9,19 @@ import relationshipsRouter from "./schema/relationships";
 import publishRouter from "./schema/publish";
 import entriesRouter from "./entries";
 import graphqlRouter from "./graphql";
+import adminUsersRouter from "./admin/users";
+import { authenticate } from "../middleware/authenticate";
+import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 
-// Auth routes (A-01)
+// Auth routes (A-01) — public
 router.use("/auth", authRouter);
+
+// Admin routes (A-03) — protected: authenticate + requirePlatformAdmin
+router.use("/admin/users", authenticate, requirePlatformAdmin, adminUsersRouter);
 
 // Catalog routes
 router.use("/catalogs", catalogsRouter);

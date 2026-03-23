@@ -14,6 +14,8 @@ import { GraphQLPage } from "@/pages/GraphQLPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { RegisterPage } from "@/pages/RegisterPage";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { AdminRoute } from "@/components/auth/AdminRoute";
+import { AdminUsersPage } from "@/pages/AdminUsersPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -40,6 +42,16 @@ function Router() {
       {/* Public routes */}
       <Route path="/login" component={LoginPage} />
       <Route path="/register" component={RegisterPage} />
+
+      {/* Admin routes (A-03) */}
+      <Route
+        path="/admin/users"
+        component={() => (
+          <AdminRoute>
+            <AdminUsersPage />
+          </AdminRoute>
+        )}
+      />
 
       {/* Protected catalog routes */}
       <Route

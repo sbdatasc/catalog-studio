@@ -83,6 +83,11 @@ The project is structured as a pnpm workspace monorepo.
 - **Frontend:** `authStore.ts` (Zustand — user, accessToken, isAuthenticated, login/register/logout/refresh/reset). `ProtectedRoute.tsx` (calls refresh() on mount, spinner while checking, redirects to /login). `LoginPage.tsx` / `RegisterPage.tsx`. All `fetchApi` calls inject `Authorization: Bearer <token>` lazily from authStore. `UserMenu` component added to CatalogsPage, DesignerNav, OperationalNav, GraphQLNav headers.
 - **App.tsx routing:** /login, /register are public; all /catalogs/* routes are wrapped in ProtectedRoute.
 
+**A-03 Platform Admin User Management:**
+- **Backend:** `authenticate()` middleware (verifyAccessToken + DB is_active check). `requirePlatformAdmin()` middleware (systemRole guard). `adminService.ts` (listUsers with pagination/search, setUserStatus with refresh-token invalidation, setUserRole with last-admin guard). `routes/admin/users.ts` (GET /api/admin/users, PATCH /api/admin/users/:id/status, PATCH /api/admin/users/:id/role). Registered at `/api/admin/users` behind both middleware.
+- **Frontend:** `adminStore.ts` (Zustand — fetchUsers, updateUser, reset). `AdminRoute.tsx` (wraps ProtectedRoute + platform_admin role check; non-admins redirected to /catalogs). `AdminUsersPage.tsx` (/admin/users — searchable user table, role/status badges, deactivate/reactivate/promote/demote with confirmation modals, own-row highlighting, pagination). `UserMenu.tsx` — "Admin panel" link visible only to platform_admins. `apiClient.ts` — token-expiry interceptor: on 401 AUTH_TOKEN_EXPIRED silently calls refresh() and retries the request once.
+- **Guards:** Cannot demote the last active platform_admin (last-admin guard). Deactivating a user immediately deletes all their refresh_tokens (forced logout). Admins cannot deactivate/promote/demote their own account (row actions hidden for self).
+
 **G-02 Embedded GraphiQL Playground:**
 - Route `/catalogs/:catalogId/graphql` renders `GraphQLPage.tsx` — full-height GraphiQL editor with the catalog's GraphQL endpoint pre-configured.
 - `createCatalogFetcher` auto-injects `catalogId` variable into all query requests.

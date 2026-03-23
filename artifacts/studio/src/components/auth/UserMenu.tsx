@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useLocation } from "wouter";
-import { LogOut, ChevronDown, User } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { LogOut, ChevronDown, User, Shield } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { cn } from "@/lib/utils";
 
@@ -30,6 +30,8 @@ export function UserMenu() {
 
   if (!user) return null;
 
+  const isAdmin = user.systemRole === "platform_admin";
+
   const initials = user.displayName
     .split(" ")
     .map((w) => w[0])
@@ -57,17 +59,28 @@ export function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1.5 w-52 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden">
+        <div className="absolute right-0 top-full mt-1.5 w-56 bg-popover border border-border rounded-lg shadow-lg z-50 overflow-hidden">
           <div className="px-3 py-2.5 border-b border-border">
             <p className="text-sm font-medium text-foreground truncate">{user.displayName}</p>
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-            {user.systemRole === "platform_admin" && (
+            {isAdmin && (
               <span className="mt-1 inline-block text-[10px] font-medium bg-primary/10 text-primary px-1.5 py-0.5 rounded">
                 Admin
               </span>
             )}
           </div>
           <div className="p-1">
+            {isAdmin && (
+              <Link
+                href="/admin/users"
+                onClick={() => setOpen(false)}
+                className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-sm text-foreground hover:bg-muted rounded-md transition-colors"
+                data-testid="admin-panel-link"
+              >
+                <Shield className="w-4 h-4 text-muted-foreground" />
+                Admin panel
+              </Link>
+            )}
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors"
