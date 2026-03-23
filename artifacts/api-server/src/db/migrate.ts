@@ -4,6 +4,7 @@ import { up as migration001 } from "./migrations/001_initial";
 import { up as migration002 } from "./migrations/002_add_node_positions";
 import { up as migration003 } from "./migrations/003_add_schema_version_diff";
 import { up as migration004 } from "./migrations/004_add_users_and_refresh_tokens";
+import { up as migration005 } from "./migrations/005_add_catalog_roles";
 
 interface MigrationFile {
   version: number;
@@ -15,6 +16,7 @@ const MIGRATIONS: MigrationFile[] = [
   { version: 2, up: migration002 },
   { version: 3, up: migration003 },
   { version: 4, up: migration004 },
+  { version: 5, up: migration005 },
 ];
 
 /**

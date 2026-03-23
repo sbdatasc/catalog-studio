@@ -1,6 +1,7 @@
 import { eq, asc, count, sql } from "drizzle-orm";
 import {
   catalogsTable,
+  catalogRolesTable,
   schemaTemplatesTable,
   schemaSectionsTable,
   schemaAttributesTable,
@@ -31,6 +32,7 @@ export interface Catalog {
 export interface CreateCatalogInput {
   name: string;
   description?: string | null;
+  creatorUserId?: string;
 }
 
 export interface UpdateCatalogInput {
@@ -120,14 +122,28 @@ export async function createCatalog(input: CreateCatalogInput): Promise<Catalog>
     throw new ServiceError("CONFLICT", `A catalog named "${input.name}" already exists`);
   }
 
-  const [row] = await db
-    .insert(catalogsTable)
-    .values({
-      name: input.name,
-      description: input.description ?? null,
-      status: "draft",
-    })
-    .returning();
+  const row = await db.transaction(async (tx) => {
+    const [catalog] = await tx
+      .insert(catalogsTable)
+      .values({
+        name: input.name,
+        description: input.description ?? null,
+        status: "draft",
+      })
+      .returning();
+
+    // A-04: assign creator as catalog_admin in the same transaction
+    if (input.creatorUserId) {
+      await tx.insert(catalogRolesTable).values({
+        catalogId: catalog.id,
+        userId: input.creatorUserId,
+        catalogRole: "catalog_admin",
+        assignedBy: input.creatorUserId,
+      });
+    }
+
+    return catalog;
+  });
 
   return { ...row, status: "draft", templateCount: 0 };
 }

@@ -10,7 +10,9 @@ import publishRouter from "./schema/publish";
 import entriesRouter from "./entries";
 import graphqlRouter from "./graphql";
 import adminUsersRouter from "./admin/users";
+import catalogRolesRouter from "./catalogRoles";
 import { authenticate } from "../middleware/authenticate";
+import { authenticateOptional } from "../middleware/authenticateOptional";
 import { requirePlatformAdmin } from "../middleware/requirePlatformAdmin";
 
 const router: IRouter = Router();
@@ -23,8 +25,11 @@ router.use("/auth", authRouter);
 // Admin routes (A-03) — protected: authenticate + requirePlatformAdmin
 router.use("/admin/users", authenticate, requirePlatformAdmin, adminUsersRouter);
 
-// Catalog routes
-router.use("/catalogs", catalogsRouter);
+// Catalog role routes (A-04) — protected: authenticate; per-route permission checks in service
+router.use("/catalog-roles", authenticate, catalogRolesRouter);
+
+// Catalog routes — authenticateOptional so POST can record the creator
+router.use("/catalogs", authenticateOptional, catalogsRouter);
 
 // Schema routes (templates, sections, attributes, relationships, publish)
 router.use("/schema/templates", templatesRouter);

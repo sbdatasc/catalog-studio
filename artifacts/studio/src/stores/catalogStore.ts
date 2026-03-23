@@ -1,12 +1,16 @@
 import { create } from "zustand";
-import { apiClient, type Catalog, type ApiError } from "@/lib/apiClient";
+import { apiClient, type Catalog, type ApiError, type CatalogRole } from "@/lib/apiClient";
 
 export interface CatalogStore {
   catalogs: Catalog[];
   catalogsLoading: boolean;
   catalogsError: ApiError | null;
 
+  myRoles: Record<string, CatalogRole | "platform_admin">;
+  myRolesLoading: boolean;
+
   fetchCatalogs: () => Promise<void>;
+  fetchMyRoles: () => Promise<void>;
   addCatalog: (c: Catalog) => void;
   updateCatalog: (c: Catalog) => void;
   removeCatalog: (id: string) => void;
@@ -17,6 +21,8 @@ const initialState = {
   catalogs: [] as Catalog[],
   catalogsLoading: true,
   catalogsError: null as ApiError | null,
+  myRoles: {} as Record<string, CatalogRole | "platform_admin">,
+  myRolesLoading: false,
 };
 
 export const useCatalogStore = create<CatalogStore>((set) => ({
@@ -29,6 +35,20 @@ export const useCatalogStore = create<CatalogStore>((set) => ({
       set({ catalogsError: error, catalogsLoading: false });
     } else if (data) {
       set({ catalogs: data, catalogsLoading: false });
+    }
+  },
+
+  fetchMyRoles: async () => {
+    set({ myRolesLoading: true });
+    const { data } = await apiClient.catalogRoles.myCatalogs();
+    if (data) {
+      const roles: Record<string, CatalogRole | "platform_admin"> = {};
+      for (const c of data) {
+        roles[c.id] = c.catalogRole;
+      }
+      set({ myRoles: roles, myRolesLoading: false });
+    } else {
+      set({ myRolesLoading: false });
     }
   },
 

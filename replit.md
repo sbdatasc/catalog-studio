@@ -88,6 +88,20 @@ The project is structured as a pnpm workspace monorepo.
 - **Frontend:** `adminStore.ts` (Zustand — fetchUsers, updateUser, reset). `AdminRoute.tsx` (wraps ProtectedRoute + platform_admin role check; non-admins redirected to /catalogs). `AdminUsersPage.tsx` (/admin/users — searchable user table, role/status badges, deactivate/reactivate/promote/demote with confirmation modals, own-row highlighting, pagination). `UserMenu.tsx` — "Admin panel" link visible only to platform_admins. `apiClient.ts` — token-expiry interceptor: on 401 AUTH_TOKEN_EXPIRED silently calls refresh() and retries the request once.
 - **Guards:** Cannot demote the last active platform_admin (last-admin guard). Deactivating a user immediately deletes all their refresh_tokens (forced logout). Admins cannot deactivate/promote/demote their own account (row actions hidden for self).
 
+**A-04 Catalog RBAC Role Assignment:**
+- **Database (migration 005):** `catalog_roles` table — `(catalog_id FK→catalogs CASCADE, user_id FK→users CASCADE, catalog_role ENUM, assigned_by FK→users SET NULL, assigned_at)` with UNIQUE constraint on `(catalog_id, user_id)`.
+- **CatalogRole enum:** `catalog_admin | designer | steward | viewer | api_consumer`.
+- **Backend service:** `catalogRoleService.ts` — `getUserCatalogRole`, `getMyCatalogs`, `listMembers`, `searchEligibleUsers` (excludes existing members + inactive users), `addMember` (CONFLICT/FORBIDDEN/VALIDATION guards), `changeMemberRole` (last-admin guard), `removeMember` (last-admin guard).
+- **Routes:** `routes/catalogRoles.ts` registered at `/api/catalog-roles` behind `authenticate` middleware. Endpoints: GET /my-catalogs, GET /:catalogId/members, GET /:catalogId/eligible-users?q=, POST /:catalogId/members, PATCH /:catalogId/members/:userId, DELETE /:catalogId/members/:userId.
+- **Creator auto-assignment:** `catalogService.createCatalog()` uses a DB transaction to insert the catalog AND the creator's `catalog_admin` role in one atomic step. The `/api/catalogs` route now uses `authenticateOptional` middleware so `req.user` is populated when a token is present.
+- **`authenticateOptional` middleware:** New middleware that populates `req.user` if a valid token is present, but does not reject unauthenticated requests.
+- **Platform admin rule:** `systemRole === 'platform_admin'` grants full implicit access to all catalogs regardless of `catalog_roles` table. Effective role computed by `useMyRole(catalogId)` hook.
+- **Frontend — `apiClient.ts`:** New types `CatalogRole`, `CatalogMember`, `EligibleUser`, `CatalogWithRole`. New `apiClient.catalogRoles` namespace with all 6 endpoints.
+- **Frontend — `catalogStore.ts`:** Added `myRoles: Record<string, CatalogRole | 'platform_admin'>`, `myRolesLoading`, `fetchMyRoles()` (calls GET /my-catalogs and builds the id→role map). Reset included in `initialState`.
+- **Frontend — `hooks/useMyRole.ts`:** Returns `CatalogRole | 'platform_admin' | null` — platform_admin users always get 'platform_admin', others look up `myRoles[catalogId]`.
+- **Frontend — `CatalogMembersDrawer.tsx`:** Full RBAC management UI — Sheet drawer with member list, platform admin banner row, `MemberRow` components, `ChangeRoleModal` (role picker with descriptions), `RemoveMemberModal` (confirm destructive), `AddMemberDrawer` (typeahead search with 280ms debounce + role selector). All actions show success toasts and handle LAST_ADMIN guard errors inline.
+- **Frontend — `CatalogsPage.tsx`:** `CatalogCard` now accepts `myRole` prop, shows "Platform Admin" badge (blue) or catalog role badge (purple/blue/amber/green). Users icon hover button opens `CatalogMembersDrawer`. `CatalogsPage` calls `fetchMyRoles()` on mount alongside `fetchCatalogs()`. `getEffectiveRole()` helper computes per-catalog role.
+
 **G-02 Embedded GraphiQL Playground:**
 - Route `/catalogs/:catalogId/graphql` renders `GraphQLPage.tsx` — full-height GraphiQL editor with the catalog's GraphQL endpoint pre-configured.
 - `createCatalogFetcher` auto-injects `catalogId` variable into all query requests.

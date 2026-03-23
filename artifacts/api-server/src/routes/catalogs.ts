@@ -74,6 +74,7 @@ router.post("/", async (req, res): Promise<void> => {
     const catalog = await catalogService.createCatalog({
       name: parsed.data.name,
       description: parsed.data.description ?? null,
+      creatorUserId: req.user?.id,
     });
     sendSuccess(res, catalog, { status: 201 });
   } catch (err) {

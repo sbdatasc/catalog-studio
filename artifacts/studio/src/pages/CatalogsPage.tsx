@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Plus, Pencil, Copy, ChevronRight, Database, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, Pencil, Copy, ChevronRight, Database, AlertCircle, Loader2, Users, Shield } from "lucide-react";
 import { UserMenu } from "@/components/auth/UserMenu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,8 +17,10 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { DrawerShell } from "@/components/DrawerShell";
+import { CatalogMembersDrawer } from "@/components/CatalogMembersDrawer";
 import { useCatalogStore } from "@/stores/catalogStore";
-import { apiClient, type Catalog, type CatalogStatus } from "@/lib/apiClient";
+import { useAuthStore } from "@/stores/authStore";
+import { apiClient, type Catalog, type CatalogStatus, type CatalogRole } from "@/lib/apiClient";
 import { useToast } from "@/hooks/use-toast";
 
 // ---------------------------------------------------------------------------
@@ -52,18 +54,40 @@ function formatDate(d: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Role badge helpers
+// ---------------------------------------------------------------------------
+
+const CATALOG_ROLE_LABEL: Record<CatalogRole, string> = {
+  catalog_admin: "Admin",
+  designer: "Designer",
+  steward: "Steward",
+  viewer: "Viewer",
+  api_consumer: "API",
+};
+
+const CATALOG_ROLE_CLASS: Record<CatalogRole, string> = {
+  catalog_admin: "bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950/50 dark:text-purple-400",
+  designer: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950/50 dark:text-blue-400",
+  steward: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950/50 dark:text-amber-400",
+  viewer: "bg-green-100 text-green-700 border-green-200 dark:bg-green-950/50 dark:text-green-400",
+  api_consumer: "bg-muted text-muted-foreground border-border",
+};
+
+// ---------------------------------------------------------------------------
 // CatalogCard
 // ---------------------------------------------------------------------------
 
 interface CatalogCardProps {
   catalog: Catalog;
+  myRole: CatalogRole | "platform_admin" | null;
   onEdit: () => void;
   onTransition: () => void;
   onDuplicate: () => void;
   onOpen: () => void;
+  onOpenMembers: () => void;
 }
 
-function CatalogCard({ catalog, onEdit, onTransition, onDuplicate, onOpen }: CatalogCardProps) {
+function CatalogCard({ catalog, myRole, onEdit, onTransition, onDuplicate, onOpen, onOpenMembers }: CatalogCardProps) {
   const next = NEXT_STATUS[catalog.status];
 
   return (
@@ -82,7 +106,19 @@ function CatalogCard({ catalog, onEdit, onTransition, onDuplicate, onOpen }: Cat
           </h3>
         </div>
 
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {myRole === "platform_admin" ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 border border-blue-200 dark:bg-blue-950/50 dark:text-blue-400">
+              <Shield className="w-3 h-3" />
+              Platform Admin
+            </span>
+          ) : myRole ? (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${CATALOG_ROLE_CLASS[myRole]}`}
+            >
+              {CATALOG_ROLE_LABEL[myRole]}
+            </span>
+          ) : null}
           <Badge
             variant="secondary"
             className={`text-xs font-medium pointer-events-none ${STATUS_CLASS[catalog.status]}`}
@@ -113,6 +149,16 @@ function CatalogCard({ catalog, onEdit, onTransition, onDuplicate, onOpen }: Cat
           className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={(e) => e.stopPropagation()}
         >
+          {myRole && (
+            <button
+              onClick={onOpenMembers}
+              className="p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition-colors"
+              title="Manage members"
+              data-testid={`button-members-catalog-${catalog.id}`}
+            >
+              <Users className="w-3.5 h-3.5" />
+            </button>
+          )}
           {next && (
             <button
               onClick={onTransition}
@@ -355,18 +401,27 @@ function TransitionConfirmModal({ catalog, onClose, onTransitioned }: Transition
 
 export function CatalogsPage() {
   const [, navigate] = useLocation();
-  const { catalogs, catalogsLoading, catalogsError, fetchCatalogs, addCatalog, updateCatalog } =
+  const { catalogs, catalogsLoading, catalogsError, fetchCatalogs, addCatalog, updateCatalog, myRoles, fetchMyRoles } =
     useCatalogStore();
+  const user = useAuthStore((s) => s.user);
   const { toast } = useToast();
 
   const [drawerMode, setDrawerMode] = useState<"closed" | "create" | "edit">("closed");
   const [editingCatalog, setEditingCatalog] = useState<Catalog | null>(null);
   const [transitionTarget, setTransitionTarget] = useState<Catalog | null>(null);
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  const [membersTarget, setMembersTarget] = useState<Catalog | null>(null);
 
   useEffect(() => {
     fetchCatalogs();
-  }, [fetchCatalogs]);
+    fetchMyRoles();
+  }, [fetchCatalogs, fetchMyRoles]);
+
+  function getEffectiveRole(catalogId: string): CatalogRole | "platform_admin" | null {
+    if (!user) return null;
+    if (user.systemRole === "platform_admin") return "platform_admin";
+    return myRoles[catalogId] ?? null;
+  }
 
   const handleOpen = (catalog: Catalog) => {
     navigate(`/catalogs/${catalog.id}/designer/templates`);
@@ -472,10 +527,12 @@ export function CatalogsPage() {
                 )}
                 <CatalogCard
                   catalog={catalog}
+                  myRole={getEffectiveRole(catalog.id)}
                   onEdit={() => handleEdit(catalog)}
                   onTransition={() => setTransitionTarget(catalog)}
                   onDuplicate={() => handleDuplicate(catalog)}
                   onOpen={() => handleOpen(catalog)}
+                  onOpenMembers={() => setMembersTarget(catalog)}
                 />
               </div>
             ))}
@@ -498,6 +555,18 @@ export function CatalogsPage() {
         onClose={() => setTransitionTarget(null)}
         onTransitioned={(c) => { updateCatalog(c); setTransitionTarget(null); }}
       />
+
+      {/* Catalog Members Drawer */}
+      {user && membersTarget && (
+        <CatalogMembersDrawer
+          isOpen={!!membersTarget}
+          catalogId={membersTarget.id}
+          catalogName={membersTarget.name}
+          currentUser={user}
+          effectiveRole={getEffectiveRole(membersTarget.id)}
+          onClose={() => setMembersTarget(null)}
+        />
+      )}
     </div>
   );
 }

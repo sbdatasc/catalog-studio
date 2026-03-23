@@ -10,3 +10,4 @@ export * from "./catalogEntryRelationships";
 export * from "./catalogNodePositions";
 export * from "./users";
 export * from "./refreshTokens";
+export * from "./catalogRoles";

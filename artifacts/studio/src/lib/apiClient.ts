@@ -243,6 +243,39 @@ export interface PaginatedEntries {
 }
 
 // ---------------------------------------------------------------------------
+// Catalog RBAC types (A-04)
+// ---------------------------------------------------------------------------
+
+export type CatalogRole = "catalog_admin" | "designer" | "steward" | "viewer" | "api_consumer";
+
+export interface CatalogMember {
+  userId: string;
+  displayName: string;
+  email: string;
+  catalogRole: CatalogRole;
+  assignedBy: string | null;
+  assignedAt: string;
+  isSelf: boolean;
+}
+
+export interface EligibleUser {
+  id: string;
+  displayName: string;
+  email: string;
+}
+
+export interface CatalogWithRole {
+  id: string;
+  name: string;
+  description: string | null;
+  status: CatalogStatus;
+  templateCount: number;
+  createdAt: string;
+  updatedAt: string;
+  catalogRole: CatalogRole;
+}
+
+// ---------------------------------------------------------------------------
 // API infrastructure
 // ---------------------------------------------------------------------------
 
@@ -507,6 +540,34 @@ export const apiClient = {
     unlink: (entryId: string, linkId: string) =>
       fetchApi<{ deleted: true }>(
         `/entries/${encodeURIComponent(entryId)}/relationships/${encodeURIComponent(linkId)}`,
+        { method: "DELETE" },
+      ),
+  },
+
+  // Catalog role routes (A-04)
+  catalogRoles: {
+    myCatalogs: () =>
+      fetchApi<CatalogWithRole[]>("/catalog-roles/my-catalogs", { method: "GET" }),
+    listMembers: (catalogId: string) =>
+      fetchApi<CatalogMember[]>(`/catalog-roles/${encodeURIComponent(catalogId)}/members`, { method: "GET" }),
+    searchEligible: (catalogId: string, q: string) =>
+      fetchApi<EligibleUser[]>(
+        `/catalog-roles/${encodeURIComponent(catalogId)}/eligible-users?q=${encodeURIComponent(q)}`,
+        { method: "GET" },
+      ),
+    addMember: (catalogId: string, body: { userId: string; catalogRole: CatalogRole }) =>
+      fetchApi<CatalogMember>(`/catalog-roles/${encodeURIComponent(catalogId)}/members`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    changeRole: (catalogId: string, targetUserId: string, catalogRole: CatalogRole) =>
+      fetchApi<CatalogMember>(
+        `/catalog-roles/${encodeURIComponent(catalogId)}/members/${encodeURIComponent(targetUserId)}`,
+        { method: "PATCH", body: JSON.stringify({ catalogRole }) },
+      ),
+    removeMember: (catalogId: string, targetUserId: string) =>
+      fetchApi<{ removed: true }>(
+        `/catalog-roles/${encodeURIComponent(catalogId)}/members/${encodeURIComponent(targetUserId)}`,
         { method: "DELETE" },
       ),
   },
