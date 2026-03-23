@@ -1,7 +1,8 @@
-import { eq, and, ilike } from "drizzle-orm";
+import { eq, and, ilike, desc, sql } from "drizzle-orm";
 import {
   catalogEntriesTable,
   catalogFieldValuesTable,
+  catalogsTable,
   schemaVersionsTable,
   type AttributeType,
   type SchemaSnapshot,
@@ -50,6 +51,13 @@ export interface EntryListItem {
   updatedAt: string;
 }
 
+export interface PaginatedEntries {
+  entries: EntryListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 // ---------------------------------------------------------------------------
 // Input types
 // ---------------------------------------------------------------------------
@@ -57,6 +65,10 @@ export interface EntryListItem {
 export interface CreateEntryInput {
   catalogId: string;
   templateId: string;
+  fieldValues: Array<{ attributeId: string; value: string | null }>;
+}
+
+export interface UpdateEntryInput {
   fieldValues: Array<{ attributeId: string; value: string | null }>;
 }
 
@@ -184,6 +196,65 @@ async function buildCatalogEntry(
   };
 }
 
+async function validateAndResolveFieldValues(
+  attributes: SnapshotAttribute[],
+  inputMap: Map<string, string | null>,
+  db: ReturnType<typeof getDb>,
+): Promise<Array<{ attributeId: string; valueText: string | null }>> {
+  const resolvedValues: Array<{ attributeId: string; valueText: string | null }> = [];
+
+  for (const attr of attributes) {
+    const rawValue = inputMap.has(attr.id) ? inputMap.get(attr.id) : null;
+    const value: string | null = rawValue ?? null;
+
+    if (attr.required && (value === null || value === "")) {
+      throw new ServiceError(
+        "REQUIRED_FIELD_MISSING",
+        `Required field "${attr.name}" is missing`,
+      );
+    }
+
+    if (value !== null && value !== "") {
+      const validation = validateAttributeValue(value, attr);
+      if (!validation.valid) {
+        throw new ServiceError("VALIDATION_ERROR", validation.error ?? "Validation failed");
+      }
+
+      if (attr.attributeType === "reference" || attr.attributeType === "reference_data") {
+        const config = attr.config as { targetTemplateId?: string } | null;
+        const [targetEntry] = await db
+          .select({ id: catalogEntriesTable.id, templateId: catalogEntriesTable.templateId })
+          .from(catalogEntriesTable)
+          .where(eq(catalogEntriesTable.id, value))
+          .limit(1);
+
+        if (!targetEntry) {
+          throw new ServiceError(
+            "REFERENCE_NOT_FOUND",
+            `The selected entry for "${attr.name}" no longer exists`,
+          );
+        }
+
+        if (config?.targetTemplateId && targetEntry.templateId !== config.targetTemplateId) {
+          throw new ServiceError(
+            "REFERENCE_NOT_FOUND",
+            `Entry for "${attr.name}" is not of the expected template type`,
+          );
+        }
+      }
+
+      resolvedValues.push({
+        attributeId: attr.id,
+        valueText: toStorageString(value, attr.attributeType),
+      });
+    } else {
+      resolvedValues.push({ attributeId: attr.id, valueText: null });
+    }
+  }
+
+  return resolvedValues;
+}
+
 // ---------------------------------------------------------------------------
 // Entry CRUD — O-01 compliant
 // ---------------------------------------------------------------------------
@@ -211,59 +282,8 @@ export async function createEntry(input: CreateEntryInput): Promise<CatalogEntry
   const attributes = getAllAttributes(template);
   const inputMap = new Map(input.fieldValues.map((fv) => [fv.attributeId, fv.value]));
 
-  const resolvedValues: Array<{ attributeId: string; valueText: string | null }> = [];
+  const resolvedValues = await validateAndResolveFieldValues(attributes, inputMap, db);
 
-  for (const attr of attributes) {
-    const rawValue = inputMap.has(attr.id) ? inputMap.get(attr.id) : null;
-    const value: string | null = rawValue ?? null;
-
-    if (attr.required && (value === null || value === "")) {
-      throw new ServiceError(
-        "REQUIRED_FIELD_MISSING",
-        `Required field "${attr.name}" is missing`,
-        // Store attributeId so route handler can pass it to client
-      );
-    }
-
-    if (value !== null && value !== "") {
-      const validation = validateAttributeValue(value, attr);
-      if (!validation.valid) {
-        if (attr.required && (value === null || value === "")) {
-          throw new ServiceError("REQUIRED_FIELD_MISSING", validation.error ?? "Required field missing");
-        }
-        throw new ServiceError("VALIDATION_ERROR", validation.error ?? "Validation failed");
-      }
-
-      if (attr.attributeType === "reference" || attr.attributeType === "reference_data") {
-        const config = attr.config as { targetTemplateId?: string } | null;
-        const [targetEntry] = await db
-          .select({ id: catalogEntriesTable.id, templateId: catalogEntriesTable.templateId })
-          .from(catalogEntriesTable)
-          .where(eq(catalogEntriesTable.id, value))
-          .limit(1);
-
-        if (!targetEntry) {
-          throw new ServiceError(
-            "REFERENCE_NOT_FOUND",
-            `The selected entry for "${attr.name}" no longer exists`,
-          );
-        }
-
-        if (config?.targetTemplateId && targetEntry.templateId !== config.targetTemplateId) {
-          throw new ServiceError(
-            "REFERENCE_NOT_FOUND",
-            `Entry for "${attr.name}" is not of the expected template type`,
-          );
-        }
-      }
-
-      resolvedValues.push({ attributeId: attr.id, valueText: toStorageString(value, attr.attributeType) });
-    } else {
-      resolvedValues.push({ attributeId: attr.id, valueText: null });
-    }
-  }
-
-  // Insert entry with a placeholder id to compute display name
   const [inserted] = await db
     .insert(catalogEntriesTable)
     .values({
@@ -295,11 +315,122 @@ export async function createEntry(input: CreateEntryInput): Promise<CatalogEntry
   return buildCatalogEntry(inserted.id, snapshot);
 }
 
+// ---------------------------------------------------------------------------
+// O-02 additions
+// ---------------------------------------------------------------------------
+
+export async function getEntry(id: string): Promise<CatalogEntry> {
+  const db = getDb();
+
+  const [entryRow] = await db
+    .select()
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, id))
+    .limit(1);
+
+  if (!entryRow) {
+    throw new ServiceError("NOT_FOUND", `Entry "${id}" not found`);
+  }
+
+  const snapshot = await getPublishedSchemaOrThrow(entryRow.catalogId);
+  return buildCatalogEntry(id, snapshot);
+}
+
+export async function updateEntry(id: string, input: UpdateEntryInput): Promise<CatalogEntry> {
+  const db = getDb();
+
+  const [entryRow] = await db
+    .select()
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, id))
+    .limit(1);
+
+  if (!entryRow) {
+    throw new ServiceError("NOT_FOUND", `Entry "${id}" not found`);
+  }
+
+  const snapshot = await getPublishedSchemaOrThrow(entryRow.catalogId);
+  const template = getTemplateFromSnapshot(snapshot, entryRow.templateId);
+  const attributes = getAllAttributes(template);
+  const inputMap = new Map(input.fieldValues.map((fv) => [fv.attributeId, fv.value]));
+
+  const resolvedValues = await validateAndResolveFieldValues(attributes, inputMap, db);
+
+  const newDisplayName = computeDisplayName(template.name, entryRow.id, attributes, resolvedValues);
+
+  await db
+    .update(catalogEntriesTable)
+    .set({ displayName: newDisplayName, updatedAt: new Date() })
+    .where(eq(catalogEntriesTable.id, id));
+
+  for (const rv of resolvedValues) {
+    await db
+      .insert(catalogFieldValuesTable)
+      .values({
+        entryId: id,
+        attributeId: rv.attributeId,
+        valueText: rv.valueText,
+      })
+      .onConflictDoUpdate({
+        target: [catalogFieldValuesTable.entryId, catalogFieldValuesTable.attributeId],
+        set: { valueText: rv.valueText, updatedAt: new Date() },
+      });
+  }
+
+  return buildCatalogEntry(id, snapshot);
+}
+
+export async function deleteEntry(id: string): Promise<void> {
+  const db = getDb();
+
+  const [entryRow] = await db
+    .select({ catalogId: catalogEntriesTable.catalogId })
+    .from(catalogEntriesTable)
+    .where(eq(catalogEntriesTable.id, id))
+    .limit(1);
+
+  if (!entryRow) {
+    throw new ServiceError("NOT_FOUND", `Entry "${id}" not found`);
+  }
+
+  const [catalogRow] = await db
+    .select({ status: catalogsTable.status })
+    .from(catalogsTable)
+    .where(eq(catalogsTable.id, entryRow.catalogId))
+    .limit(1);
+
+  if (catalogRow?.status === "discontinued") {
+    throw new ServiceError(
+      "CATALOG_LOCKED",
+      "This catalog is discontinued. Entries cannot be deleted.",
+    );
+  }
+
+  await db.delete(catalogEntriesTable).where(eq(catalogEntriesTable.id, id));
+}
+
 export async function listEntries(
   catalogId: string,
   templateId: string,
-): Promise<EntryListItem[]> {
+  page = 1,
+  limit = 24,
+): Promise<PaginatedEntries> {
   const db = getDb();
+  const safePage = Math.max(1, page);
+  const safeLimit = Math.min(Math.max(1, limit), 100);
+  const offset = (safePage - 1) * safeLimit;
+
+  const [totalResult] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(catalogEntriesTable)
+    .where(
+      and(
+        eq(catalogEntriesTable.catalogId, catalogId),
+        eq(catalogEntriesTable.templateId, templateId),
+      ),
+    );
+
+  const total = totalResult?.count ?? 0;
 
   const rows = await db
     .select({
@@ -316,16 +447,24 @@ export async function listEntries(
         eq(catalogEntriesTable.catalogId, catalogId),
         eq(catalogEntriesTable.templateId, templateId),
       ),
-    );
+    )
+    .orderBy(desc(catalogEntriesTable.updatedAt))
+    .limit(safeLimit)
+    .offset(offset);
 
-  return rows.map((r) => ({
-    id: r.id,
-    catalogId: r.catalogId,
-    templateId: r.templateId,
-    displayName: r.displayName ?? `Untitled #${r.id.substring(0, 8)}`,
-    createdAt: r.createdAt.toISOString(),
-    updatedAt: r.updatedAt.toISOString(),
-  }));
+  return {
+    entries: rows.map((r) => ({
+      id: r.id,
+      catalogId: r.catalogId,
+      templateId: r.templateId,
+      displayName: r.displayName ?? `Untitled #${r.id.substring(0, 8)}`,
+      createdAt: r.createdAt.toISOString(),
+      updatedAt: r.updatedAt.toISOString(),
+    })),
+    total,
+    page: safePage,
+    limit: safeLimit,
+  };
 }
 
 export async function searchEntries(
@@ -354,6 +493,7 @@ export async function searchEntries(
         ilike(catalogEntriesTable.displayName, `%${q}%`),
       ),
     )
+    .orderBy(desc(catalogEntriesTable.updatedAt))
     .limit(safeLimit);
 
   return rows.map((r) => ({

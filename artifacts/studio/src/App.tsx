@@ -9,6 +9,7 @@ import { TemplateDetailPage } from "@/components/designer/templates/TemplateDeta
 import { RelationshipsPage } from "@/pages/RelationshipsPage";
 import { PublishPage } from "@/pages/PublishPage";
 import { OperationalPage } from "@/pages/OperationalPage";
+import { EntryDetailPage } from "@/pages/EntryDetailPage";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -78,6 +79,18 @@ function Router() {
       <Route
         path="/catalogs/:catalogId/designer/reference-data"
         component={({ params }) => <DesignerPage catalogId={params.catalogId} tab="reference-data" />}
+      />
+
+      {/* Operational mode — entry detail/edit (O-02) */}
+      <Route
+        path="/catalogs/:catalogId/operational/:templateId/entries/:entryId"
+        component={({ params }) => (
+          <EntryDetailPage
+            catalogId={params.catalogId}
+            templateId={params.templateId}
+            entryId={params.entryId}
+          />
+        )}
       />
 
       {/* Operational mode (O-01) */}

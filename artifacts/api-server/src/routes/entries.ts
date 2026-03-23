@@ -21,9 +21,23 @@ const CreateEntryBody = z.object({
   fieldValues: z.array(FieldValueInput),
 });
 
+const UpdateEntryBody = z.object({
+  fieldValues: z.array(FieldValueInput),
+});
+
 const ListEntriesQuery = z.object({
   catalogId: z.string().uuid("catalogId must be a valid UUID"),
   templateId: z.string().uuid("templateId must be a valid UUID"),
+  page: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseInt(v, 10) : 1))
+    .pipe(z.number().int().min(1)),
+  limit: z
+    .string()
+    .optional()
+    .transform((v) => (v ? parseInt(v, 10) : 24))
+    .pipe(z.number().int().min(1).max(100)),
 });
 
 const SearchEntriesQuery = z.object({
@@ -45,6 +59,8 @@ function handleServiceError(res: Parameters<typeof sendError>[0], err: unknown):
   if (err instanceof ServiceError) {
     switch (err.code) {
       case "NOT_FOUND":
+        sendError(res, 404, "NOT_FOUND" as never, err.message);
+        return;
       case "REFERENCE_NOT_FOUND":
         sendError(res, 422, "VALIDATION_ERROR" as never, err.message, {
           details: { code: err.code },
@@ -57,6 +73,11 @@ function handleServiceError(res: Parameters<typeof sendError>[0], err: unknown):
         return;
       case "VALIDATION_ERROR":
         sendError(res, 422, "VALIDATION_ERROR" as never, err.message);
+        return;
+      case "CATALOG_LOCKED":
+        sendError(res, 403, "FORBIDDEN" as never, err.message, {
+          details: { code: "CATALOG_LOCKED" },
+        });
         return;
       case "UNPROCESSABLE":
         sendError(res, 422, "UNPROCESSABLE" as never, err.message);
@@ -99,9 +120,9 @@ router.get("/", async (req, res) => {
   }
 
   try {
-    const { catalogId, templateId } = parsed.data;
-    const entries = await entryService.listEntries(catalogId, templateId);
-    sendSuccess(res, entries);
+    const { catalogId, templateId, page, limit } = parsed.data;
+    const result = await entryService.listEntries(catalogId, templateId, page, limit);
+    sendSuccess(res, result);
   } catch (err) {
     handleServiceError(res, err);
   }
@@ -120,6 +141,50 @@ router.post("/", async (req, res) => {
   try {
     const entry = await entryService.createEntry(parsed.data);
     sendSuccess(res, entry, { status: 201 });
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/entries/:id
+// ---------------------------------------------------------------------------
+
+router.get("/:id", async (req, res) => {
+  try {
+    const entry = await entryService.getEntry(req.params.id);
+    sendSuccess(res, entry);
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /api/entries/:id
+// ---------------------------------------------------------------------------
+
+router.patch("/:id", async (req, res) => {
+  const parsed = UpdateEntryBody.safeParse(req.body);
+  if (!parsed.success) {
+    return sendError(res, 400, "BAD_REQUEST" as never, parsed.error.errors[0]?.message ?? "Validation failed");
+  }
+
+  try {
+    const entry = await entryService.updateEntry(req.params.id, parsed.data);
+    sendSuccess(res, entry);
+  } catch (err) {
+    handleServiceError(res, err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/entries/:id
+// ---------------------------------------------------------------------------
+
+router.delete("/:id", async (req, res) => {
+  try {
+    await entryService.deleteEntry(req.params.id);
+    sendSuccess(res, { deleted: true });
   } catch (err) {
     handleServiceError(res, err);
   }

@@ -69,6 +69,13 @@ interface UiStore {
   openEntryForm: () => void;
   closeEntryForm: () => void;
 
+  // Entry list view (O-02)
+  entryListViewMode: "card" | "table";
+  setEntryListViewMode: (mode: "card" | "table") => void;
+  isColumnPickerOpen: boolean;
+  toggleColumnPicker: () => void;
+  closeColumnPicker: () => void;
+
   reset: () => void;
 }
 
@@ -307,6 +314,16 @@ export const useUiStore = create<UiStore>((set, get) => ({
   openEntryForm: () => set({ isEntryFormOpen: true }),
   closeEntryForm: () => set({ isEntryFormOpen: false }),
 
+  // -------------------------------------------------------------------------
+  // Entry list view (O-02)
+  // -------------------------------------------------------------------------
+
+  entryListViewMode: "card" as "card" | "table",
+  setEntryListViewMode: (mode) => set({ entryListViewMode: mode, isColumnPickerOpen: false }),
+  isColumnPickerOpen: false,
+  toggleColumnPicker: () => set((s) => ({ isColumnPickerOpen: !s.isColumnPickerOpen })),
+  closeColumnPicker: () => set({ isColumnPickerOpen: false }),
+
   reset: () =>
     set({
       activeCatalogId: null,
@@ -329,5 +346,7 @@ export const useUiStore = create<UiStore>((set, get) => ({
       deleteRelModalId: null,
       activeTemplateTabId: null,
       isEntryFormOpen: false,
+      entryListViewMode: "card" as "card" | "table",
+      isColumnPickerOpen: false,
     }),
 }));

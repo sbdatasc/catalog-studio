@@ -34,7 +34,7 @@ export function ReferenceDataSelect({
     setLoading(true);
     apiClient.entries.list(catalogId, targetTemplateId).then(({ data }) => {
       if (mounted) {
-        setOptions(data ?? []);
+        setOptions(data?.entries ?? []);
         setLoading(false);
       }
     });

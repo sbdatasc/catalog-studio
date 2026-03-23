@@ -215,6 +215,17 @@ export interface CreateEntryInput {
   fieldValues: Array<{ attributeId: string; value: string | null }>;
 }
 
+export interface UpdateEntryInput {
+  fieldValues: Array<{ attributeId: string; value: string | null }>;
+}
+
+export interface PaginatedEntries {
+  entries: EntryListItem[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 // ---------------------------------------------------------------------------
 // API infrastructure
 // ---------------------------------------------------------------------------
@@ -419,11 +430,11 @@ export const apiClient = {
       }),
   },
 
-  // Entry routes (O-01)
+  // Entry routes (O-01 + O-02)
   entries: {
-    list: (catalogId: string, templateId: string) =>
-      fetchApi<EntryListItem[]>(
-        `/entries?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}`,
+    list: (catalogId: string, templateId: string, page = 1, limit = 24) =>
+      fetchApi<PaginatedEntries>(
+        `/entries?catalogId=${encodeURIComponent(catalogId)}&templateId=${encodeURIComponent(templateId)}&page=${page}&limit=${limit}`,
         { method: "GET" },
       ),
     search: (catalogId: string, templateId: string, q: string, limit = 10) =>
@@ -435,6 +446,17 @@ export const apiClient = {
       fetchApi<CatalogEntry>("/entries", {
         method: "POST",
         body: JSON.stringify(body),
+      }),
+    get: (id: string) =>
+      fetchApi<CatalogEntry>(`/entries/${encodeURIComponent(id)}`),
+    update: (id: string, body: UpdateEntryInput) =>
+      fetchApi<CatalogEntry>(`/entries/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    delete: (id: string) =>
+      fetchApi<{ deleted: true }>(`/entries/${encodeURIComponent(id)}`, {
+        method: "DELETE",
       }),
   },
 };

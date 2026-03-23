@@ -1,26 +1,44 @@
-import { useEffect, useMemo } from "react";
-import { Link } from "wouter";
-import { Loader2, Plus, AlertCircle, Database } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Link, useLocation } from "wouter";
+import { Loader2, AlertCircle, Database } from "lucide-react";
 import { useUiStore } from "@/stores/uiStore";
 import { useSchemaStore } from "@/stores/schemaStore";
 import { useEntryStore } from "@/stores/entryStore";
 import { OperationalNav } from "@/components/operational/OperationalNav";
 import { NoSchemaPublishedBanner } from "@/components/operational/NoSchemaPublishedBanner";
 import { EntryForm } from "@/components/operational/EntryForm";
-import type { SnapshotTemplate } from "@/lib/apiClient";
+import { ContentHeader } from "@/components/operational/ContentHeader";
+import { EntryCardGrid } from "@/components/operational/EntryCardGrid";
+import { EntryTableView } from "@/components/operational/EntryTableView";
+import { SearchResultsBanner } from "@/components/operational/SearchResultsBanner";
+import { loadColumnPrefs, saveColumnPrefs } from "@/components/operational/ColumnPickerPanel";
+import { apiClient } from "@/lib/apiClient";
+import type { SnapshotTemplate, EntryListItem } from "@/lib/apiClient";
+import { TABLE_PAGE_SIZE } from "@/stores/entryStore";
 
 interface Props {
   catalogId: string;
 }
 
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedValue(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debouncedValue;
+}
+
 export function OperationalPage({ catalogId }: Props) {
+  const [, navigate] = useLocation();
+
   const setActiveCatalog = useUiStore((s) => s.setActiveCatalog);
   const activeTemplateTabId = useUiStore((s) => s.activeTemplateTabId);
   const setActiveTemplateTab = useUiStore((s) => s.setActiveTemplateTab);
   const isEntryFormOpen = useUiStore((s) => s.isEntryFormOpen);
   const openEntryForm = useUiStore((s) => s.openEntryForm);
   const closeEntryForm = useUiStore((s) => s.closeEntryForm);
+  const viewMode = useUiStore((s) => s.entryListViewMode);
 
   const publishedSchemasByCatalog = useSchemaStore((s) => s.publishedSchemasByCatalog);
   const publishedSchemaLoading = useSchemaStore((s) => s.publishedSchemaLoading);
@@ -29,8 +47,16 @@ export function OperationalPage({ catalogId }: Props) {
 
   const entriesByTemplate = useEntryStore((s) => s.entriesByTemplate);
   const entriesLoading = useEntryStore((s) => s.entriesLoading);
-  const entriesError = useEntryStore((s) => s.entriesError);
+  const paginationByTemplate = useEntryStore((s) => s.paginationByTemplate);
   const fetchEntries = useEntryStore((s) => s.fetchEntries);
+  const loadMoreEntries = useEntryStore((s) => s.loadMoreEntries);
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<EntryListItem[] | null>(null);
+  const [tablePage, setTablePage] = useState(1);
+
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const snapshot = publishedSchemasByCatalog[catalogId];
   const isLoading = publishedSchemaLoading[catalogId] ?? true;
@@ -59,17 +85,79 @@ export function OperationalPage({ catalogId }: Props) {
   useEffect(() => {
     if (activeTemplateTabId) {
       fetchEntries(catalogId, activeTemplateTabId);
+      setSearchQuery("");
+      setSearchResults(null);
+      setTablePage(1);
     }
   }, [activeTemplateTabId, catalogId, fetchEntries]);
+
+  // Debounced search
+  useEffect(() => {
+    if (!debouncedSearch || !activeTemplateTabId) {
+      setSearchResults(null);
+      return;
+    }
+    let cancelled = false;
+    setIsSearching(true);
+    apiClient.entries
+      .search(catalogId, activeTemplateTabId, debouncedSearch, 50)
+      .then(({ data }) => {
+        if (!cancelled) {
+          setSearchResults(data ?? []);
+          setIsSearching(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setIsSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, catalogId, activeTemplateTabId]);
 
   const activeTemplate = useMemo(
     () => templateTabs.find((t) => t.id === activeTemplateTabId) ?? null,
     [templateTabs, activeTemplateTabId],
   );
 
-  const activeEntries = activeTemplateTabId ? (entriesByTemplate[activeTemplateTabId] ?? []) : [];
+  const allEntries = activeTemplateTabId ? (entriesByTemplate[activeTemplateTabId] ?? []) : [];
   const activeEntriesLoading = activeTemplateTabId ? (entriesLoading[activeTemplateTabId] ?? false) : false;
-  const activeEntriesError = activeTemplateTabId ? (entriesError[activeTemplateTabId] ?? null) : null;
+  const pagination = activeTemplateTabId ? paginationByTemplate[activeTemplateTabId] : null;
+
+  const displayedEntries = searchResults ?? allEntries;
+
+  // Column prefs
+  const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!activeTemplate) return;
+    const prefs = loadColumnPrefs(catalogId, activeTemplate);
+    setSelectedColumns(prefs);
+  }, [activeTemplate, catalogId]);
+
+  function handleColumnsChange(ids: string[]) {
+    setSelectedColumns(ids);
+    if (activeTemplate) saveColumnPrefs(catalogId, activeTemplate.id, ids);
+  }
+
+  function handleEdit(entryId: string) {
+    if (!activeTemplate) return;
+    navigate(`/catalogs/${catalogId}/operational/${activeTemplate.id}/entries/${entryId}`);
+  }
+
+  // Table page navigation (loads fresh pages from API)
+  async function handleTableNextPage() {
+    if (!activeTemplateTabId || !pagination?.hasMore) return;
+    const nextPage = tablePage + 1;
+    setTablePage(nextPage);
+    // Temporarily fetch table page from API (50 rows) — simplified: use entryStore
+    await loadMoreEntries(catalogId, activeTemplateTabId);
+  }
+
+  async function handleTablePrevPage() {
+    if (tablePage <= 1) return;
+    setTablePage((p) => Math.max(1, p - 1));
+  }
 
   if (isLoading) {
     return (
@@ -132,7 +220,7 @@ export function OperationalPage({ catalogId }: Props) {
         </div>
       )}
 
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden flex flex-col">
         {!snapshot ? (
           <NoSchemaPublishedBanner catalogId={catalogId} />
         ) : isEntryFormOpen && activeTemplate && snapshot ? (
@@ -143,68 +231,95 @@ export function OperationalPage({ catalogId }: Props) {
               snapshot={snapshot}
             />
           </div>
-        ) : (
-          <div className="h-full overflow-y-auto">
-            {templateTabs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full p-16 text-center">
-                <p className="text-muted-foreground text-sm">
-                  No non-reference-data templates found in the published schema.
-                </p>
-              </div>
-            ) : !activeTemplate ? null : (
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h2 className="text-xl font-semibold text-foreground">{activeTemplate.name}</h2>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {activeEntries.length} {activeEntries.length === 1 ? "entry" : "entries"}
-                    </p>
-                  </div>
-                  <Button
-                    onClick={openEntryForm}
-                    data-testid="new-entry-button"
-                  >
-                    <Plus className="w-4 h-4 mr-2" />
-                    New Entry
-                  </Button>
-                </div>
+        ) : templateTabs.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-16 text-center">
+            <p className="text-muted-foreground text-sm">
+              No non-reference-data templates found in the published schema.
+            </p>
+          </div>
+        ) : !activeTemplate ? null : (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <ContentHeader
+              catalogId={catalogId}
+              template={activeTemplate}
+              entryCount={pagination?.total ?? allEntries.length}
+              searchQuery={searchQuery}
+              isSearching={isSearching}
+              onSearchChange={setSearchQuery}
+              onClearSearch={() => {
+                setSearchQuery("");
+                setSearchResults(null);
+              }}
+              onNewEntry={openEntryForm}
+              selectedColumns={selectedColumns}
+              onColumnsChange={handleColumnsChange}
+            />
 
-                {activeEntriesLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {searchResults !== null && searchQuery && (
+                <SearchResultsBanner
+                  query={searchQuery}
+                  count={searchResults.length}
+                  onClear={() => {
+                    setSearchQuery("");
+                    setSearchResults(null);
+                  }}
+                />
+              )}
+
+              {activeEntriesLoading && allEntries.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : displayedEntries.length === 0 ? (
+                searchResults !== null ? (
+                  <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
+                    <p className="text-muted-foreground text-sm font-medium">
+                      No entries matching "{searchQuery}"
+                    </p>
+                    <button
+                      onClick={() => {
+                        setSearchQuery("");
+                        setSearchResults(null);
+                      }}
+                      className="text-sm text-primary hover:underline mt-2"
+                    >
+                      Clear search
+                    </button>
                   </div>
-                ) : activeEntriesError ? (
-                  <div className="flex items-center gap-3 p-4 bg-destructive/10 border border-destructive/20 rounded-lg text-destructive">
-                    <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                    <p className="text-sm">Could not load entries. Please try again.</p>
-                  </div>
-                ) : activeEntries.length === 0 ? (
+                ) : (
                   <div className="text-center py-16 border-2 border-dashed border-border rounded-xl">
                     <p className="text-muted-foreground text-sm font-medium">No entries yet</p>
                     <p className="text-muted-foreground text-sm mt-1">
-                      Click "New Entry" to create your first {activeTemplate.name.toLowerCase()} entry.
+                      Click "New Entry" to add the first one.
                     </p>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {activeEntries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className="flex items-center justify-between p-4 bg-card border border-border rounded-lg hover:border-primary/30 transition-colors"
-                        data-testid="entry-list-item"
-                      >
-                        <div>
-                          <p className="font-medium text-sm text-foreground">{entry.displayName}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            Created {new Date(entry.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+                )
+              ) : viewMode === "card" ? (
+                <EntryCardGrid
+                  entries={displayedEntries}
+                  template={activeTemplate}
+                  catalogId={catalogId}
+                  hasMore={searchResults === null && (pagination?.hasMore ?? false)}
+                  loadingMore={activeEntriesLoading}
+                  onLoadMore={() => loadMoreEntries(catalogId, activeTemplateTabId!)}
+                  onEdit={handleEdit}
+                />
+              ) : (
+                <EntryTableView
+                  entries={displayedEntries}
+                  template={activeTemplate}
+                  catalogId={catalogId}
+                  selectedColumns={selectedColumns}
+                  total={pagination?.total ?? displayedEntries.length}
+                  page={tablePage}
+                  limit={TABLE_PAGE_SIZE}
+                  onNextPage={handleTableNextPage}
+                  onPrevPage={handleTablePrevPage}
+                  onEdit={handleEdit}
+                />
+              )}
+            </div>
           </div>
         )}
       </div>

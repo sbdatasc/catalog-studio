@@ -64,6 +64,7 @@ export interface SchemaStore {
 
   // Published schema snapshot (O-01) — keyed by catalogId
   publishedSchemasByCatalog: Record<string, SchemaSnapshot | null>;
+  publishedVersionIdByCatalog: Record<string, string | null>;
   publishedSchemaLoading: Record<string, boolean>;
   publishedSchemaError: Record<string, ApiError | null>;
   fetchPublishedSchema: (catalogId: string) => Promise<void>;
@@ -90,6 +91,7 @@ const initialState = {
   nodePositionsByCatalog: {} as Record<string, NodePosition[]>,
   nodePositionsLoading: {} as Record<string, boolean>,
   publishedSchemasByCatalog: {} as Record<string, SchemaSnapshot | null>,
+  publishedVersionIdByCatalog: {} as Record<string, string | null>,
   publishedSchemaLoading: {} as Record<string, boolean>,
   publishedSchemaError: {} as Record<string, ApiError | null>,
 };
@@ -360,6 +362,10 @@ export const useSchemaStore = create<SchemaStore>((set, get) => ({
       publishedSchemasByCatalog: {
         ...s.publishedSchemasByCatalog,
         [catalogId]: data?.snapshot ?? null,
+      },
+      publishedVersionIdByCatalog: {
+        ...s.publishedVersionIdByCatalog,
+        [catalogId]: data?.id ?? null,
       },
     }));
   },
