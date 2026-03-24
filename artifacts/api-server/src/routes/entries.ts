@@ -204,6 +204,52 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
+// POST /api/entries/bulk-link — steward (O-05)
+// ---------------------------------------------------------------------------
+
+const BulkLinkBody = z.object({
+  catalogId: z.string().uuid("catalogId must be a valid UUID"),
+  fromEntryIds: z
+    .array(z.string().uuid("each fromEntryId must be a valid UUID"))
+    .min(1, "fromEntryIds must not be empty"),
+  toEntryId: z.string().uuid("toEntryId must be a valid UUID"),
+  relationshipId: z.string().uuid("relationshipId must be a valid UUID"),
+});
+
+router.post(
+  "/bulk-link",
+  requireCatalogRole("steward", (req) => {
+    const catalogId = req.body?.catalogId;
+    if (!catalogId || typeof catalogId !== "string") {
+      throw new ServiceError("NOT_FOUND", "catalogId is required");
+    }
+    return catalogId;
+  }),
+  async (req, res) => {
+    const parsed = BulkLinkBody.safeParse(req.body);
+    if (!parsed.success) {
+      return sendError(
+        res,
+        422,
+        "VALIDATION_ERROR" as never,
+        parsed.error.errors[0]?.message ?? "Validation failed",
+      );
+    }
+
+    try {
+      const result = await entryService.bulkLinkEntries({
+        fromEntryIds: parsed.data.fromEntryIds,
+        toEntryId: parsed.data.toEntryId,
+        relationshipId: parsed.data.relationshipId,
+      });
+      sendSuccess(res, result);
+    } catch (err) {
+      handleServiceError(res, err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // GET /api/entries/:id — viewer
 // ---------------------------------------------------------------------------
 

@@ -1,6 +1,23 @@
 export type CatalogStatus = "draft" | "pilot" | "published" | "discontinued";
 
 // ---------------------------------------------------------------------------
+// O-05 — Bulk Link types
+// ---------------------------------------------------------------------------
+
+export interface BulkLinkEntry {
+  entryId: string;
+  displayName: string;
+  reason?: string;
+}
+
+export interface BulkLinkResult {
+  attempted: number;
+  succeeded: BulkLinkEntry[];
+  skipped: BulkLinkEntry[];
+  failed: BulkLinkEntry[];
+}
+
+// ---------------------------------------------------------------------------
 // O-04 — Filter types (shared with FilterPanel + entryStore)
 // ---------------------------------------------------------------------------
 
@@ -580,6 +597,16 @@ export const apiClient = {
         `/entries/${encodeURIComponent(entryId)}/relationships/${encodeURIComponent(linkId)}`,
         { method: "DELETE" },
       ),
+    bulkLink: (body: {
+      catalogId: string;
+      fromEntryIds: string[];
+      toEntryId: string;
+      relationshipId: string;
+    }) =>
+      fetchApi<BulkLinkResult>("/entries/bulk-link", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   },
 
   // Catalog role routes (A-04)

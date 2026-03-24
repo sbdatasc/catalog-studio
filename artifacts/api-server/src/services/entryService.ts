@@ -83,6 +83,29 @@ export interface LinkEntriesInput {
 }
 
 // ---------------------------------------------------------------------------
+// O-05 — Bulk Link types
+// ---------------------------------------------------------------------------
+
+export interface BulkLinkEntry {
+  entryId: string;
+  displayName: string;
+  reason?: string;
+}
+
+export interface BulkLinkResult {
+  attempted: number;
+  succeeded: BulkLinkEntry[];
+  skipped: BulkLinkEntry[];
+  failed: BulkLinkEntry[];
+}
+
+export interface BulkLinkInput {
+  fromEntryIds: string[];
+  toEntryId: string;
+  relationshipId: string;
+}
+
+// ---------------------------------------------------------------------------
 // O-04 — Filter types
 // ---------------------------------------------------------------------------
 
@@ -921,6 +944,62 @@ export async function unlinkEntries(linkId: string): Promise<void> {
   await db
     .delete(catalogEntryRelationshipsTable)
     .where(eq(catalogEntryRelationshipsTable.id, linkId));
+}
+
+// ---------------------------------------------------------------------------
+// O-05 — Bulk link
+// ---------------------------------------------------------------------------
+
+export async function bulkLinkEntries(input: BulkLinkInput): Promise<BulkLinkResult> {
+  if (input.fromEntryIds.length === 0) {
+    throw new ServiceError("VALIDATION_ERROR", "fromEntryIds must not be empty");
+  }
+
+  const db = getDb();
+
+  const result: BulkLinkResult = {
+    attempted: input.fromEntryIds.length,
+    succeeded: [],
+    skipped: [],
+    failed: [],
+  };
+
+  for (const fromEntryId of input.fromEntryIds) {
+    // Fetch display name first (best effort — use placeholder if not found)
+    const [entryRow] = await db
+      .select({ displayName: catalogEntriesTable.displayName })
+      .from(catalogEntriesTable)
+      .where(eq(catalogEntriesTable.id, fromEntryId))
+      .limit(1);
+
+    const displayName = entryRow?.displayName ?? `Untitled #${fromEntryId.substring(0, 8)}`;
+
+    try {
+      await linkEntries({
+        fromEntryId,
+        toEntryId: input.toEntryId,
+        relationshipId: input.relationshipId,
+      });
+      result.succeeded.push({ entryId: fromEntryId, displayName });
+    } catch (err) {
+      const isCardinality = err instanceof ServiceError && err.code === "CONFLICT";
+      if (isCardinality) {
+        result.skipped.push({
+          entryId: fromEntryId,
+          displayName,
+          reason: err instanceof Error ? err.message : "Cardinality violation",
+        });
+      } else {
+        result.failed.push({
+          entryId: fromEntryId,
+          displayName,
+          reason: err instanceof Error ? err.message : "Unexpected error",
+        });
+      }
+    }
+  }
+
+  return result;
 }
 
 export async function searchEntries(

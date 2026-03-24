@@ -1,11 +1,22 @@
-import { useRef, useEffect, useState } from "react";
-import { Search, X, LayoutGrid, Table, Columns3, Plus, Loader2, SlidersHorizontal } from "lucide-react";
+import { useRef } from "react";
+import {
+  Search,
+  X,
+  LayoutGrid,
+  Table,
+  Columns3,
+  Plus,
+  Loader2,
+  SlidersHorizontal,
+  Link2,
+  CheckSquare,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useUiStore } from "@/stores/uiStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import type { SnapshotTemplate } from "@/lib/apiClient";
-import { ColumnPickerPanel, loadColumnPrefs, saveColumnPrefs } from "./ColumnPickerPanel";
+import { ColumnPickerPanel } from "./ColumnPickerPanel";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -22,6 +33,11 @@ interface Props {
   filterCount?: number;
   isFilterOpen?: boolean;
   onToggleFilter?: () => void;
+  // Multi-select (O-05)
+  isMultiSelectMode?: boolean;
+  selectedCount?: number;
+  onLinkTo?: () => void;
+  onCancelSelection?: () => void;
 }
 
 export function ContentHeader({
@@ -38,16 +54,56 @@ export function ContentHeader({
   filterCount = 0,
   isFilterOpen = false,
   onToggleFilter,
+  isMultiSelectMode = false,
+  selectedCount = 0,
+  onLinkTo,
+  onCancelSelection,
 }: Props) {
   const viewMode = useUiStore((s) => s.entryListViewMode);
   const setViewMode = useUiStore((s) => s.setEntryListViewMode);
   const isColumnPickerOpen = useUiStore((s) => s.isColumnPickerOpen);
   const toggleColumnPicker = useUiStore((s) => s.toggleColumnPicker);
   const closeColumnPicker = useUiStore((s) => s.closeColumnPicker);
-  const { canCreateEntries } = usePermissions(catalogId);
+  const { canCreateEntries, canLinkEntries } = usePermissions(catalogId);
 
-  const searchRef = useRef<HTMLInputElement>(null);
   const columnsButtonRef = useRef<HTMLDivElement>(null);
+
+  if (isMultiSelectMode) {
+    return (
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-primary/5">
+        <div className="flex items-center gap-2 shrink-0">
+          <CheckSquare className="w-4 h-4 text-primary" />
+          <span className="text-sm font-semibold text-foreground">
+            {selectedCount} selected
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 ml-auto shrink-0">
+          {canLinkEntries && (
+            <Button
+              size="sm"
+              className="h-9 gap-1.5"
+              onClick={onLinkTo}
+              disabled={selectedCount === 0}
+              data-testid="bulk-link-button"
+            >
+              <Link2 className="w-4 h-4" />
+              Link to…
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9"
+            onClick={onCancelSelection}
+            data-testid="cancel-selection-button"
+          >
+            Cancel Selection
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3 px-6 py-4 border-b border-border bg-background">
@@ -68,7 +124,6 @@ export function ContentHeader({
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           )}
           <Input
-            ref={searchRef}
             type="text"
             placeholder={`Search ${template.name} entries…`}
             value={searchQuery}
@@ -88,7 +143,7 @@ export function ContentHeader({
         </div>
       </div>
 
-      {/* Right: View toggle + Columns + New Entry */}
+      {/* Right: View toggle + Columns + Filter + New Entry */}
       <div className="flex items-center gap-2 ml-auto shrink-0">
         <div className="flex items-center bg-muted p-0.5 rounded-lg border border-border">
           <button

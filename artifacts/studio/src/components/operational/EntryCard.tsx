@@ -7,6 +7,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteEntryModal } from "./DeleteEntryModal";
 import { CardLinkHandle } from "./CardLinkHandle";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -25,6 +26,10 @@ interface Props {
   isCompatibleTarget?: boolean;
   onLinkDragStart?: (e: React.DragEvent, entry: EntryListItem) => void;
   onDropLink?: (entry: EntryListItem) => void;
+  // Multi-select (O-05)
+  isMultiSelectMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (entryId: string) => void;
 }
 
 function formatRelativeDate(iso: string): string {
@@ -54,6 +59,9 @@ export function EntryCard({
   isCompatibleTarget = false,
   onLinkDragStart,
   onDropLink,
+  isMultiSelectMode = false,
+  isSelected = false,
+  onToggleSelect,
 }: Props) {
   const [, navigate] = useLocation();
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -64,13 +72,24 @@ export function EntryCard({
 
   const hasRelationships = template.relationships.length > 0;
   const isDiscontinued = catalogStatus === "discontinued";
-  const canShowLinkHandle = hasRelationships && !isDiscontinued && !isInLinkMode && canLinkEntries;
+  const canShowLinkHandle =
+    hasRelationships && !isDiscontinued && !isInLinkMode && !isMultiSelectMode && canLinkEntries;
+  const showCheckbox = canLinkEntries && !isInLinkMode && !isDiscontinued && hasRelationships;
 
   function handleCardClick(e: React.MouseEvent) {
     if (isInLinkMode) return;
     const target = e.target as HTMLElement;
     if (target.closest("[data-no-navigate]")) return;
+    if (isMultiSelectMode) {
+      onToggleSelect?.(entry.id);
+      return;
+    }
     navigate(detailPath);
+  }
+
+  function handleCheckboxClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    onToggleSelect?.(entry.id);
   }
 
   function handleDragOver(e: React.DragEvent) {
@@ -101,17 +120,19 @@ export function EntryCard({
     )
     .slice(0, 3);
 
-  const borderClass = isLinkSource
+  const borderClass = isSelected
     ? "border-primary ring-2 ring-primary/40"
-    : isDragOver && isCompatibleTarget
-      ? "border-green-500 ring-2 ring-green-400/40"
-      : isInLinkMode && isCompatibleTarget
-        ? "border-green-300"
-        : isInLinkMode && !isCompatibleTarget && !isLinkSource
-          ? "border-border opacity-40"
-          : hasIncomplete
-            ? "border-amber-300"
-            : "border-border";
+    : isLinkSource
+      ? "border-primary ring-2 ring-primary/40"
+      : isDragOver && isCompatibleTarget
+        ? "border-green-500 ring-2 ring-green-400/40"
+        : isInLinkMode && isCompatibleTarget
+          ? "border-green-300"
+          : isInLinkMode && !isCompatibleTarget && !isLinkSource
+            ? "border-border opacity-40"
+            : hasIncomplete
+              ? "border-amber-300"
+              : "border-border";
 
   return (
     <>
@@ -131,7 +152,9 @@ export function EntryCard({
             ? "cursor-copy"
             : isInLinkMode && !isCompatibleTarget && !isLinkSource
               ? "cursor-not-allowed"
-              : "cursor-pointer hover:border-primary/40 hover:shadow-sm",
+              : isMultiSelectMode
+                ? "cursor-pointer"
+                : "cursor-pointer hover:border-primary/40 hover:shadow-sm",
           borderClass,
         )}
         onClick={handleCardClick}
@@ -140,7 +163,29 @@ export function EntryCard({
         onDrop={handleDrop}
         data-testid="entry-card"
       >
-        {hasIncomplete && !isInLinkMode && (
+        {/* Checkbox — top-left, visible on hover (normal mode) or always (multi-select mode) */}
+        {showCheckbox && (
+          <div
+            className={cn(
+              "absolute top-3 left-3 transition-opacity",
+              isMultiSelectMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+            data-no-navigate
+            onClick={handleCheckboxClick}
+          >
+            <Checkbox
+              checked={isSelected}
+              className={cn(
+                "w-4 h-4 rounded border-2 bg-background",
+                isSelected && "border-primary",
+              )}
+              aria-label={`Select ${entry.displayName}`}
+              data-testid={`entry-checkbox-${entry.id}`}
+            />
+          </div>
+        )}
+
+        {hasIncomplete && !isInLinkMode && !isMultiSelectMode && (
           <div className="absolute top-3 left-3" data-no-navigate>
             <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
               <AlertCircle className="w-3 h-3" />
@@ -149,7 +194,7 @@ export function EntryCard({
           </div>
         )}
 
-        <div className="flex items-start justify-between gap-2">
+        <div className={cn("flex items-start justify-between gap-2", showCheckbox && "pl-5")}>
           <div className="min-w-0 flex-1 mt-0.5">
             <h3 className="font-semibold text-sm text-foreground truncate leading-snug">
               {entry.displayName}
@@ -157,7 +202,7 @@ export function EntryCard({
             <p className="text-xs text-muted-foreground mt-0.5">{template.name}</p>
           </div>
 
-          {!isInLinkMode && (canEditEntries || canDeleteEntries) && (
+          {!isInLinkMode && !isMultiSelectMode && (canEditEntries || canDeleteEntries) && (
             <div data-no-navigate>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -191,7 +236,7 @@ export function EntryCard({
         </div>
 
         {previewAttrs.length > 0 && (
-          <div className="mt-3 space-y-1">
+          <div className={cn("mt-3 space-y-1", showCheckbox && "pl-5")}>
             {previewAttrs.map((attr) => (
               <div key={attr.id} className="flex items-baseline gap-1 text-xs">
                 <span className="text-muted-foreground font-medium shrink-0">{attr.name}:</span>

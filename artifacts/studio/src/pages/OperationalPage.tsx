@@ -14,6 +14,7 @@ import { EntryCardGrid } from "@/components/operational/EntryCardGrid";
 import { EntryTableView } from "@/components/operational/EntryTableView";
 import { SearchResultsBanner } from "@/components/operational/SearchResultsBanner";
 import { FilterPanel } from "@/components/operational/FilterPanel";
+import { BulkLinkDrawer } from "@/components/operational/BulkLinkDrawer";
 import { loadColumnPrefs, saveColumnPrefs } from "@/components/operational/ColumnPickerPanel";
 import { apiClient } from "@/lib/apiClient";
 import type { SnapshotTemplate, EntryListItem, EntryFilter } from "@/lib/apiClient";
@@ -55,6 +56,14 @@ export function OperationalPage({ catalogId }: Props) {
   const openEntryForm = useUiStore((s) => s.openEntryForm);
   const closeEntryForm = useUiStore((s) => s.closeEntryForm);
   const viewMode = useUiStore((s) => s.entryListViewMode);
+
+  // Multi-select (O-05)
+  const isMultiSelectMode = useUiStore((s) => s.isMultiSelectMode);
+  const selectedEntryIds = useUiStore((s) => s.selectedEntryIds);
+  const exitMultiSelectMode = useUiStore((s) => s.exitMultiSelectMode);
+  const isBulkLinkDrawerOpen = useUiStore((s) => s.isBulkLinkDrawerOpen);
+  const openBulkLinkDrawer = useUiStore((s) => s.openBulkLinkDrawer);
+  const closeBulkLinkDrawer = useUiStore((s) => s.closeBulkLinkDrawer);
 
   const publishedSchemasByCatalog = useSchemaStore((s) => s.publishedSchemasByCatalog);
   const publishedSchemaLoading = useSchemaStore((s) => s.publishedSchemaLoading);
@@ -152,6 +161,12 @@ export function OperationalPage({ catalogId }: Props) {
   const pagination = activeTemplateTabId ? paginationByTemplate[activeTemplateTabId] : null;
 
   const displayedEntries = searchResults ?? allEntries;
+
+  // Multi-select: resolved selected entries from the loaded list
+  const selectedEntries = useMemo(
+    () => allEntries.filter((e) => selectedEntryIds.has(e.id)),
+    [allEntries, selectedEntryIds],
+  );
 
   // Column prefs
   const [selectedColumns, setSelectedColumns] = useState<string[]>([]);
@@ -299,6 +314,10 @@ export function OperationalPage({ catalogId }: Props) {
               filterCount={activeFilters.length}
               isFilterOpen={isFilterPanelOpen}
               onToggleFilter={() => setIsFilterPanelOpen((v) => !v)}
+              isMultiSelectMode={isMultiSelectMode}
+              selectedCount={selectedEntryIds.size}
+              onLinkTo={openBulkLinkDrawer}
+              onCancelSelection={exitMultiSelectMode}
             />
 
             {/* Main content area — side-by-side table + filter panel */}
@@ -398,6 +417,20 @@ export function OperationalPage({ catalogId }: Props) {
           </div>
         )}
       </div>
+
+      {/* Bulk Link Drawer (O-05) */}
+      {isBulkLinkDrawerOpen && activeTemplate && selectedEntries.length > 0 && (
+        <BulkLinkDrawer
+          catalogId={catalogId}
+          template={activeTemplate}
+          selectedEntries={selectedEntries}
+          onClose={closeBulkLinkDrawer}
+          onDone={() => {
+            closeBulkLinkDrawer();
+            exitMultiSelectMode();
+          }}
+        />
+      )}
     </div>
   );
 }

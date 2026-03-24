@@ -88,6 +88,18 @@ interface UiStore {
   openRelationshipLinkDrawer: (relationshipId: string) => void;
   closeRelationshipLinkDrawer: () => void;
 
+  // Multi-select mode (O-05)
+  isMultiSelectMode: boolean;
+  selectedEntryIds: Set<string>;
+  enterMultiSelectMode: () => void;
+  exitMultiSelectMode: () => void;
+  toggleEntrySelection: (entryId: string) => void;
+  selectAllEntries: (entryIds: string[]) => void;
+  clearSelection: () => void;
+  isBulkLinkDrawerOpen: boolean;
+  openBulkLinkDrawer: () => void;
+  closeBulkLinkDrawer: () => void;
+
   reset: () => void;
 }
 
@@ -325,7 +337,13 @@ export const useUiStore = create<UiStore>((set, get) => ({
   // -------------------------------------------------------------------------
 
   activeTemplateTabId: null,
-  setActiveTemplateTab: (templateId) => set({ activeTemplateTabId: templateId }),
+  setActiveTemplateTab: (templateId) =>
+    set({
+      activeTemplateTabId: templateId,
+      isMultiSelectMode: false,
+      selectedEntryIds: new Set(),
+      isBulkLinkDrawerOpen: false,
+    }),
   isEntryFormOpen: false,
   openEntryForm: () => set({ isEntryFormOpen: true }),
   closeEntryForm: () => set({ isEntryFormOpen: false }),
@@ -335,7 +353,14 @@ export const useUiStore = create<UiStore>((set, get) => ({
   // -------------------------------------------------------------------------
 
   entryListViewMode: "card" as "card" | "table",
-  setEntryListViewMode: (mode) => set({ entryListViewMode: mode, isColumnPickerOpen: false }),
+  setEntryListViewMode: (mode) =>
+    set({
+      entryListViewMode: mode,
+      isColumnPickerOpen: false,
+      isMultiSelectMode: false,
+      selectedEntryIds: new Set(),
+      isBulkLinkDrawerOpen: false,
+    }),
   isColumnPickerOpen: false,
   toggleColumnPicker: () => set((s) => ({ isColumnPickerOpen: !s.isColumnPickerOpen })),
   closeColumnPicker: () => set({ isColumnPickerOpen: false }),
@@ -356,6 +381,35 @@ export const useUiStore = create<UiStore>((set, get) => ({
     set({ relationshipLinkDrawerOpen: true, relationshipLinkDrawerRelId: relationshipId }),
   closeRelationshipLinkDrawer: () =>
     set({ relationshipLinkDrawerOpen: false, relationshipLinkDrawerRelId: null }),
+
+  // -------------------------------------------------------------------------
+  // Multi-select mode (O-05)
+  // -------------------------------------------------------------------------
+
+  isMultiSelectMode: false,
+  selectedEntryIds: new Set<string>(),
+  isBulkLinkDrawerOpen: false,
+
+  enterMultiSelectMode: () => set({ isMultiSelectMode: true }),
+
+  exitMultiSelectMode: () =>
+    set({ isMultiSelectMode: false, selectedEntryIds: new Set(), isBulkLinkDrawerOpen: false }),
+
+  toggleEntrySelection: (entryId: string) =>
+    set((s) => {
+      const next = new Set(s.selectedEntryIds);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return { selectedEntryIds: next };
+    }),
+
+  selectAllEntries: (entryIds: string[]) =>
+    set({ selectedEntryIds: new Set(entryIds) }),
+
+  clearSelection: () => set({ selectedEntryIds: new Set() }),
+
+  openBulkLinkDrawer: () => set({ isBulkLinkDrawerOpen: true }),
+  closeBulkLinkDrawer: () => set({ isBulkLinkDrawerOpen: false }),
 
   reset: () =>
     set({
@@ -382,5 +436,8 @@ export const useUiStore = create<UiStore>((set, get) => ({
       isEntryFormOpen: false,
       entryListViewMode: "card" as "card" | "table",
       isColumnPickerOpen: false,
+      isMultiSelectMode: false,
+      selectedEntryIds: new Set<string>(),
+      isBulkLinkDrawerOpen: false,
     }),
 }));

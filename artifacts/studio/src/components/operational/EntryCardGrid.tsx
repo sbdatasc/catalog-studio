@@ -5,7 +5,14 @@ import { EntryCard } from "./EntryCard";
 import { LinkModeOverlay } from "./LinkModeOverlay";
 import { RelationshipSelectionDialog } from "./RelationshipSelectionDialog";
 import { getCompatibleTemplateIds } from "@/utils/getCompatibleTemplateIds";
-import type { EntryListItem, SnapshotTemplate, SchemaSnapshot, SnapshotRelationship, EntryLinkInstance } from "@/lib/apiClient";
+import { useUiStore } from "@/stores/uiStore";
+import type {
+  EntryListItem,
+  SnapshotTemplate,
+  SchemaSnapshot,
+  SnapshotRelationship,
+  EntryLinkInstance,
+} from "@/lib/apiClient";
 
 interface Props {
   entries: EntryListItem[];
@@ -19,7 +26,7 @@ interface Props {
   snapshot?: SchemaSnapshot;
 }
 
-function hasIncompleteFields(entry: EntryListItem, template: SnapshotTemplate): boolean {
+function hasIncompleteFields(_entry: EntryListItem, template: SnapshotTemplate): boolean {
   const requiredAttrs = template.sections.flatMap((s) =>
     s.attributes.filter((a) => a.required),
   );
@@ -63,6 +70,13 @@ export function EntryCardGrid({
 
   const isInLinkMode = linkSourceEntry !== null;
 
+  // Multi-select state from uiStore
+  const isMultiSelectMode = useUiStore((s) => s.isMultiSelectMode);
+  const selectedEntryIds = useUiStore((s) => s.selectedEntryIds);
+  const enterMultiSelectMode = useUiStore((s) => s.enterMultiSelectMode);
+  const exitMultiSelectMode = useUiStore((s) => s.exitMultiSelectMode);
+  const toggleEntrySelection = useUiStore((s) => s.toggleEntrySelection);
+
   const cancelLinkMode = useCallback(() => {
     setLinkSourceEntry(null);
     setPendingTarget(null);
@@ -71,16 +85,27 @@ export function EntryCardGrid({
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && isInLinkMode) {
-        cancelLinkMode();
+      if (e.key === "Escape") {
+        if (isMultiSelectMode) {
+          exitMultiSelectMode();
+        } else if (isInLinkMode) {
+          cancelLinkMode();
+        }
       }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isInLinkMode, cancelLinkMode]);
+  }, [isInLinkMode, isMultiSelectMode, cancelLinkMode, exitMultiSelectMode]);
+
+  function handleToggleSelect(entryId: string) {
+    if (!isMultiSelectMode) {
+      enterMultiSelectMode();
+    }
+    toggleEntrySelection(entryId);
+  }
 
   function handleLinkDragStart(e: React.DragEvent, entry: EntryListItem) {
-    if (!snapshot) return;
+    if (!snapshot || isMultiSelectMode) return;
     e.dataTransfer.setData("text/plain", entry.id);
     e.dataTransfer.effectAllowed = "link";
     const compatible = getCompatibleTemplateIds(entry.templateId, snapshot);
@@ -139,8 +164,11 @@ export function EntryCardGrid({
                 isInLinkMode={isInLinkMode}
                 isLinkSource={isSource}
                 isCompatibleTarget={isCompatible}
-                onLinkDragStart={snapshot ? handleLinkDragStart : undefined}
+                onLinkDragStart={snapshot && !isMultiSelectMode ? handleLinkDragStart : undefined}
                 onDropLink={handleDropLink}
+                isMultiSelectMode={isMultiSelectMode}
+                isSelected={selectedEntryIds.has(entry.id)}
+                onToggleSelect={handleToggleSelect}
               />
             );
           })}
