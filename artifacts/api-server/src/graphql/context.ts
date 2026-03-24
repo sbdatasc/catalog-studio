@@ -1,5 +1,6 @@
 import type { SchemaSnapshot } from "@workspace/db";
 import type { getDb } from "../db/connection";
+import type { CatalogRole } from "../services/catalogRoleService";
 
 export type DbClient = ReturnType<typeof getDb>;
 
@@ -24,4 +25,6 @@ export interface GraphQLContext {
   slugMap: SlugMap;
   depth: number;
   catalogId: string;
+  userId: string;
+  userCatalogRole: CatalogRole | "platform_admin" | null;
 }

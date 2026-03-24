@@ -34,6 +34,7 @@ import {
   attributeFieldResolver,
   refDataFieldResolver,
 } from "./resolvers";
+import { buildMutationRoot } from "./mutations";
 import type { DbClient, GraphQLContext, SlugMap } from "./context";
 import { getCurrentPublishedSchema } from "../services/templateService";
 
@@ -153,8 +154,11 @@ export function buildSchema(snapshot: SchemaSnapshot): GraphQLSchema {
     }
   }
 
-  // Step 4 — Build GraphQLObjectType for every non-reference-data template (with thunks)
-  for (const tpl of nonRefTemplates) {
+  // Step 4 — Build GraphQLObjectType for every template (both regular and reference data).
+  // Non-reference-data templates appear in the QueryRoot; ALL templates appear in the
+  // EntryResult union used by mutation return types so createEntry/updateEntry can return
+  // the appropriate template-specific type regardless of isReferenceData.
+  for (const tpl of snapshot.templates) {
     const typeName = toGraphQLTypeName(tpl.name);
     objectTypes.set(
       tpl.id,
@@ -210,7 +214,11 @@ export function buildSchema(snapshot: SchemaSnapshot): GraphQLSchema {
   }
 
   const QueryRoot = new GraphQLObjectType({ name: "Query", fields: queryFields });
-  return new GraphQLSchema({ query: QueryRoot });
+
+  // Step 8 — Mutation root (entry CRUD + links)
+  const MutationRoot = buildMutationRoot(snapshot, objectTypes, slugMap);
+
+  return new GraphQLSchema({ query: QueryRoot, mutation: MutationRoot });
 }
 
 function buildObjectFields(

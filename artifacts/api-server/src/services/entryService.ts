@@ -865,6 +865,22 @@ export async function linkEntries(input: LinkEntriesInput): Promise<EntryLinkIns
         `This entry is already linked from another ${relDef.label}. Remove that link first.`,
       );
     }
+  } else {
+    // M:N — check for exact duplicate link
+    const existingLink = await db
+      .select({ id: catalogEntryRelationshipsTable.id })
+      .from(catalogEntryRelationshipsTable)
+      .where(
+        and(
+          eq(catalogEntryRelationshipsTable.fromEntryId, input.fromEntryId),
+          eq(catalogEntryRelationshipsTable.toEntryId, input.toEntryId),
+          eq(catalogEntryRelationshipsTable.relationshipId, input.relationshipId),
+        ),
+      )
+      .limit(1);
+    if (existingLink.length > 0) {
+      throw new ServiceError("CONFLICT", `These entries are already linked via ${relDef.label}.`);
+    }
   }
 
   const [inserted] = await db
