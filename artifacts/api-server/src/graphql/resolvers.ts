@@ -1,7 +1,6 @@
 import { eq, and, inArray } from "drizzle-orm";
 import {
   catalogEntriesTable,
-  catalogFieldValuesTable,
   catalogEntryRelationshipsTable,
 } from "@workspace/db";
 import { fromStorageString } from "../services/coercionService";
@@ -9,9 +8,14 @@ import type { AttributeType } from "@workspace/db";
 import type { GraphQLContext, ResolvedEntry, DbClient } from "./context";
 import { applyFilterToEntries } from "./filters";
 
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
 async function loadEntriesWithFieldValues(
   db: DbClient,
   entryIds: string[],
+  context: GraphQLContext,
 ): Promise<ResolvedEntry[]> {
   if (entryIds.length === 0) return [];
 
@@ -24,28 +28,23 @@ async function loadEntriesWithFieldValues(
     .from(catalogEntriesTable)
     .where(inArray(catalogEntriesTable.id, entryIds));
 
-  const fieldValues = await db
-    .select({
-      entryId: catalogFieldValuesTable.entryId,
-      attributeId: catalogFieldValuesTable.attributeId,
-      value: catalogFieldValuesTable.valueText,
-    })
-    .from(catalogFieldValuesTable)
-    .where(inArray(catalogFieldValuesTable.entryId, entryIds));
+  // Batch-load all field values via DataLoader
+  const fvBatches = await context.loaders.entryFieldValues.loadMany(entries.map((e) => e.id));
 
-  const fvByEntry = new Map<string, Array<{ attributeId: string; value: string | null }>>();
-  for (const fv of fieldValues) {
-    if (!fvByEntry.has(fv.entryId)) fvByEntry.set(fv.entryId, []);
-    fvByEntry.get(fv.entryId)!.push({ attributeId: fv.attributeId, value: fv.value });
-  }
-
-  return entries.map((e) => ({
-    id: e.id,
-    displayName: e.displayName,
-    templateId: e.templateId,
-    fieldValues: fvByEntry.get(e.id) ?? [],
-  }));
+  return entries.map((e, i) => {
+    const fvs = fvBatches[i];
+    return {
+      id: e.id,
+      displayName: e.displayName,
+      templateId: e.templateId,
+      fieldValues: fvs instanceof Error ? [] : fvs,
+    };
+  });
 }
+
+// ---------------------------------------------------------------------------
+// Root list resolver
+// ---------------------------------------------------------------------------
 
 export async function rootListResolver(
   templateId: string,
@@ -71,32 +70,18 @@ export async function rootListResolver(
 
   if (entries.length === 0) return [];
 
-  const allFieldValues = await db
-    .select({
-      entryId: catalogFieldValuesTable.entryId,
-      attributeId: catalogFieldValuesTable.attributeId,
-      value: catalogFieldValuesTable.valueText,
-    })
-    .from(catalogFieldValuesTable)
-    .where(
-      inArray(
-        catalogFieldValuesTable.entryId,
-        entries.map((e) => e.id),
-      ),
-    );
+  // Batch-load field values for all entries in one DataLoader call
+  const fvBatches = await context.loaders.entryFieldValues.loadMany(entries.map((e) => e.id));
 
-  const fvByEntry = new Map<string, Array<{ attributeId: string; value: string | null }>>();
-  for (const fv of allFieldValues) {
-    if (!fvByEntry.has(fv.entryId)) fvByEntry.set(fv.entryId, []);
-    fvByEntry.get(fv.entryId)!.push({ attributeId: fv.attributeId, value: fv.value });
-  }
-
-  let result: ResolvedEntry[] = entries.map((e) => ({
-    id: e.id,
-    displayName: e.displayName,
-    templateId: e.templateId,
-    fieldValues: fvByEntry.get(e.id) ?? [],
-  }));
+  let result: ResolvedEntry[] = entries.map((e, i) => {
+    const fvs = fvBatches[i];
+    return {
+      id: e.id,
+      displayName: e.displayName,
+      templateId: e.templateId,
+      fieldValues: fvs instanceof Error ? [] : fvs,
+    };
+  });
 
   if (args.where && typeof args.where === "object") {
     const tpl = snapshot.templates.find((t) => t.id === templateId);
@@ -108,6 +93,10 @@ export async function rootListResolver(
 
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Root single resolver
+// ---------------------------------------------------------------------------
 
 export async function rootSingleResolver(
   _parent: unknown,
@@ -133,22 +122,20 @@ export async function rootSingleResolver(
 
   if (!entry) return null;
 
-  const fieldValues = await db
-    .select({
-      entryId: catalogFieldValuesTable.entryId,
-      attributeId: catalogFieldValuesTable.attributeId,
-      value: catalogFieldValuesTable.valueText,
-    })
-    .from(catalogFieldValuesTable)
-    .where(eq(catalogFieldValuesTable.entryId, entry.id));
+  // Use DataLoader for field values (participates in request-level batching)
+  const fvs = await context.loaders.entryFieldValues.load(entry.id);
 
   return {
     id: entry.id,
     displayName: entry.displayName,
     templateId: entry.templateId,
-    fieldValues: fieldValues.map((fv) => ({ attributeId: fv.attributeId, value: fv.value })),
+    fieldValues: fvs instanceof Error ? [] : fvs,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Relationship field resolver — uses DataLoader for from-side batching
+// ---------------------------------------------------------------------------
 
 export async function relationshipFieldResolver(
   relationshipId: string,
@@ -165,17 +152,14 @@ export async function relationshipFieldResolver(
   let linkedEntryIds: string[];
 
   if (side === "from") {
-    const links = await db
-      .select({ toEntryId: catalogEntryRelationshipsTable.toEntryId })
-      .from(catalogEntryRelationshipsTable)
-      .where(
-        and(
-          eq(catalogEntryRelationshipsTable.fromEntryId, parent.id),
-          eq(catalogEntryRelationshipsTable.relationshipId, relationshipId),
-        ),
-      );
+    // Use DataLoader — batches all sibling resolver calls into a single query
+    const links = await context.loaders.relationshipLinks.load({
+      fromEntryId: parent.id,
+      relationshipId,
+    });
     linkedEntryIds = links.map((l) => l.toEntryId);
   } else {
+    // Reverse (to) side — direct query (uncommon; not worth a second loader at MVP 2 scale)
     const links = await db
       .select({ fromEntryId: catalogEntryRelationshipsTable.fromEntryId })
       .from(catalogEntryRelationshipsTable)
@@ -188,10 +172,12 @@ export async function relationshipFieldResolver(
     linkedEntryIds = links.map((l) => l.fromEntryId);
   }
 
-  void childContext;
-
-  return loadEntriesWithFieldValues(db, linkedEntryIds);
+  return loadEntriesWithFieldValues(db, linkedEntryIds, childContext);
 }
+
+// ---------------------------------------------------------------------------
+// Attribute field resolver — synchronous, reads from pre-loaded field values
+// ---------------------------------------------------------------------------
 
 export function attributeFieldResolver(
   attributeId: string,
@@ -201,6 +187,10 @@ export function attributeFieldResolver(
   const fv = parent.fieldValues.find((f) => f.attributeId === attributeId);
   return fromStorageString(fv?.value ?? null, attributeType);
 }
+
+// ---------------------------------------------------------------------------
+// Ref-data field resolver — resolves display name for reference_data attributes
+// ---------------------------------------------------------------------------
 
 export async function refDataFieldResolver(
   attributeId: string,

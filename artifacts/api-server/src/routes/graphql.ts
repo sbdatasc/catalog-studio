@@ -4,6 +4,7 @@ import { graphql } from "graphql";
 import { getOrBuildSchema, SchemaUnreadyError } from "../graphql/engine";
 import { getDb } from "../db/connection";
 import type { GraphQLContext } from "../graphql/context";
+import { createDataLoaders } from "../graphql/dataLoaders";
 import { ServiceError } from "../lib/errors";
 import * as catalogRoleService from "../services/catalogRoleService";
 
@@ -68,6 +69,9 @@ router.post("/", async (req, res) => {
     const db = getDb();
     const { schema, snapshot, slugMap } = await getOrBuildSchema(db, catalogId);
 
+    // Create fresh DataLoader instances per request — never share across requests
+    const loaders = createDataLoaders(db);
+
     const context: GraphQLContext = {
       db,
       snapshot,
@@ -76,6 +80,7 @@ router.post("/", async (req, res) => {
       catalogId,
       userId: req.user.id,
       userCatalogRole,
+      loaders,
     };
 
     // --- 5. Execute ---
